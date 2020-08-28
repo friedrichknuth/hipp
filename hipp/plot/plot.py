@@ -4,7 +4,7 @@ import pathlib
 import hipp
 
 """
-Library for command plotting functions.
+Library for common plotting functions.
 """
 
 def plot_images(image_arrays,

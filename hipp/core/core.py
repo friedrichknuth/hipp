@@ -11,7 +11,74 @@ import hipp
 """
 Library with core image pre-processing functions.
 """
+    
+def compute_intersection_angle(fiducial_locations):
+    # Extract diametrically opposed fiducial marker coordinates. 
+    # Order is the same for center and corner fiducials.
+    
+    A0 = fiducial_locations[0]
+    A1 = fiducial_locations[2]
+    B0 = fiducial_locations[1]
+    B1 = fiducial_locations[3]
+    
+    arc1 = np.rad2deg(np.arctan2(B1[1] - B0[1],
+                             B1[0] - B0[0]))
 
+    arc2 = np.rad2deg(np.arctan2(A1[1] - A0[1],
+                                 A1[0] - A0[0]))
+    intersection_angle = arc1-arc2
+    
+    return intersection_angle
+
+def compute_principal_point(subpixel_fiducial_locations, 
+                            subpixel_quality_scores,
+                            median_scores):
+    
+    principal_point_estimates = []
+    
+    A0, B0, A1, B1 = subpixel_fiducial_locations
+    A0_score, B0_score, A1_score, B1_score = subpixel_quality_scores
+    A0_median_score, B0_median_score, A1_median_score, B1_median_score = median_scores
+    
+    principal_point_A = hipp.core.eval_and_compute_principal_point(A0,A0_score,A0_median_score,
+                                                                   A1,A1_score,A1_median_score)
+    if principal_point_A:
+        principal_point_estimates.append(principal_point_A)
+
+    principal_point_B = hipp.core.eval_and_compute_principal_point(B0,B0_score,B0_median_score,
+                                                                   B1,B1_score,B1_median_score)
+    if principal_point_B:
+        principal_point_estimates.append(principal_point_B)
+        
+    principal_point_estimates = np.array(principal_point_estimates)
+    if principal_point_estimates.size != 0:
+        principal_point = principal_point_estimates[:,0].mean(), principal_point_estimates[:,1].mean()
+        return principal_point
+    
+
+def compute_principal_points(fiducial_locations_df, quality_scores_df):
+    
+    median_scores = []
+    for i in np.arange(0,4):
+        median_score = quality_scores_df.iloc[:,i].median()
+        median_scores.append(median_score)
+
+    principal_points = []
+    for i in range(len(quality_scores_df)):
+        
+        subpixel_fiducial_locations = fiducial_locations_df.iloc[i].values
+        subpixel_quality_scores = quality_scores_df.iloc[i].values
+
+        principal_point = hipp.core.compute_principal_point(subpixel_fiducial_locations, 
+                                                            subpixel_quality_scores, 
+                                                            median_scores)
+        principal_points.append([principal_point])
+        
+    principal_points_df = pd.DataFrame(principal_points,columns=['principal_point'])
+    
+    return principal_points_df
+    
+    
 def create_fiducial_template(image_file, 
                              output_directory = 'fiducials',
                              output_file_name='fiducial.tif',
@@ -131,16 +198,18 @@ def detect_fiducials(slices,
                      windows):
 
     matches = []
+    quality_scores = []
 
     for index, slice_array in enumerate(slices):
-        match = hipp.core.match_template(slice_array,
+        match_location, quality_score = hipp.core.match_template(slice_array,
                                          template_array)
                                          
-        match = (windows[index][0] + match[0],
-                 windows[index][2] + match[1])
+        match = (windows[index][0] + match_location[0],
+                 windows[index][2] + match_location[1])
         matches.append(match)
+        quality_scores.append(quality_score)
         
-    return matches
+    return matches, quality_scores
 
 
 def detect_high_res_fiducial(fiducial_crop_high_res_file,
@@ -151,8 +220,8 @@ def detect_high_res_fiducial(fiducial_crop_high_res_file,
     fiducial_crop_high_res_array = cv2.imread(fiducial_crop_high_res_file,cv2.IMREAD_GRAYSCALE)
     template_high_res_zoomed_array = cv2.imread(template_high_res_zoomed_file,cv2.IMREAD_GRAYSCALE)
     
-    match_location = hipp.core.match_template(fiducial_crop_high_res_array,
-                                              template_high_res_zoomed_array)
+    match_location, quality_score = hipp.core.match_template(fiducial_crop_high_res_array,
+                                                             template_high_res_zoomed_array)
 
     if qc == True:
         output_directory = 'qc/fiducial_detection/'
@@ -173,7 +242,7 @@ def detect_high_res_fiducial(fiducial_crop_high_res_file,
         out = os.path.join(output_directory,file_name+file_extension)
         cv2.imwrite(out,image_array)
     
-    return match_location
+    return match_location, quality_score
     
 
 def detect_subpixel_fiducial_coordinates(image_file,
@@ -191,6 +260,7 @@ def detect_subpixel_fiducial_coordinates(image_file,
     p.mkdir(parents=True, exist_ok=True)
 
     subpixel_fiducial_locations = []
+    quality_scores = []
 
     for index, match_location in enumerate(matches):
 
@@ -204,7 +274,7 @@ def detect_subpixel_fiducial_coordinates(image_file,
         fiducial_crop_high_res_file = hipp.utils.enhance_geotif_resolution(cropped_fiducial_file,
                                                                            factor=factor)
 
-        match_location_high_res = hipp.core.detect_high_res_fiducial(fiducial_crop_high_res_file,
+        match_location_high_res, quality_score = hipp.core.detect_high_res_fiducial(fiducial_crop_high_res_file,
                                                                      template_high_res_zoomed_file,
                                                                      distance_from_loc=distance_from_loc,
                                                                      qc=qc)
@@ -215,12 +285,26 @@ def detect_subpixel_fiducial_coordinates(image_file,
         subpixel_fiducial_location = y + match_location[0], x+match_location[1]
 
         subpixel_fiducial_locations.append(subpixel_fiducial_location)
+        quality_scores.append(quality_score)
         
     if cleanup == True:
         shutil.rmtree('tmp/')
         
-    return subpixel_fiducial_locations
+    return subpixel_fiducial_locations, quality_scores
     
+
+def eval_and_compute_principal_point(P1, P1_score, P1_median_score,
+                                     P2, P2_score, P2_median_score,
+                                     threshold=0.01):
+    """
+    Evaluates fiducial point detection score and computes principal point estimates
+    as midpoint between diametrically opposed fiducial markers.
+    """
+            
+    if P1_median_score - P1_score < threshold and P2_median_score - P2_score < threshold:
+        principal_point = hipp.math.midpoint(P1[1], P1[0], P2[1], P2[0])
+        return principal_point
+        
 
 def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                           image_files_extension ='.tif',
@@ -240,6 +324,9 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
     images = sorted(glob.glob(os.path.join(image_files_directory,'*'+image_files_extension)))
     template_array = cv2.imread(template_file,cv2.IMREAD_GRAYSCALE)
     fiducial_locations = []
+    intersection_angles = []
+    principal_points = []
+    quality_scores = []
     
     for image_file in images:
         image_array = cv2.imread(image_file,cv2.IMREAD_GRAYSCALE)
@@ -256,29 +343,49 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
         slices = hipp.core.slice_image_frame(image_array,windows)
         
         # Detect fiducial in each window
-        matches = hipp.core.detect_fiducials(slices,
-                                             template_array,
-                                             windows)
+        matches, _ = hipp.core.detect_fiducials(slices,
+                                                template_array,
+                                                windows)
         
         if center_fiducials:
             labels = ['center_left','center_top','center_right','center_bottom']
         elif corner_fiducials:
             labels = ['corner_top_left','corner_top_right','corner_bottom_right','corner_bottom_left']
+        quality_score_labels = [sub + '_score' for sub in labels]
 
-        subpixel_fiducial_locations = hipp.core.detect_subpixel_fiducial_coordinates(image_file,
-                                                 image_array,
-                                                 matches,
-                                                 template_high_res_zoomed_file,
-                                                 labels = labels,
-                                                 qc=qc)
+        subpixel_fiducial_locations, subpixel_quality_scores = hipp.core.detect_subpixel_fiducial_coordinates(image_file,
+                                                                image_array,
+                                                                matches,
+                                                                template_high_res_zoomed_file,
+                                                                labels=labels,
+                                                                qc=qc)
                                                  
+        # intersection_angle = hipp.core.compute_intersection_angle(subpixel_fiducial_locations)
+        # principal_point = hipp.core.compute_principal_point(subpixel_fiducial_locations,
+        #                                                     subpixel_quality_scores)
+                          
         fiducial_locations.append(subpixel_fiducial_locations)
+        # intersection_angles.append(intersection_angle)
+        # principal_points.append([principal_point])
+        quality_scores.append(subpixel_quality_scores)
     
     
-    df1 = pd.DataFrame(images,columns=['fileName'])
-    df2 = pd.DataFrame(fiducial_locations, columns =labels)
-    df  = pd.concat([df1,df2], axis=1)
-    
+
+    images_df = pd.DataFrame(images,columns=['fileName'])
+    fiducial_locations_df = pd.DataFrame(fiducial_locations,columns=labels)
+    quality_scores_df = pd.DataFrame(quality_scores, columns=quality_score_labels)
+    # intersection_angles_df = pd.DataFrame(intersection_angles,columns=['intersection_angle'])
+    principal_points_df = hipp.core.compute_principal_points(fiducial_locations_df, 
+                                                             quality_scores_df)
+
+    df  = pd.concat([images_df,
+                     fiducial_locations_df,
+                     quality_scores_df,
+                     # intersection_angles_df,
+                     principal_points_df,
+                 ],
+                     axis=1)
+
     return df
 
 
@@ -288,7 +395,10 @@ def match_template(image_array,
     result = cv2.matchTemplate(image_array,template_array,cv2.TM_CCOEFF_NORMED)
     location = np.where(result==result.max())
     
-    return location[0][0], location[1][0]
+    match_location = (location[0][0], location[1][0])
+    quality_score = result.max()
+    
+    return match_location, quality_score
     
 def slice_image_frame(image_array, 
                       windows):

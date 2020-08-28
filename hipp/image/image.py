@@ -23,3 +23,10 @@ def img_linear_stretch(img_gray,
     p_min, p_max = np.percentile(img_gray, min_max)
     img_rescale = exposure.rescale_intensity(img_gray, in_range=(p_min, p_max))
     return img_rescale
+    
+def threshold_and_add_noise(image_array,
+                            threshold=50):
+    mask = image_array > threshold
+    rand = np.random.randint(0,256,size=image_array.shape)
+    image_array[mask] = rand[mask]
+    return image_array
