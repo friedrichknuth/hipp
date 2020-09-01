@@ -1,4 +1,4 @@
-
+from collections.abc import Iterable
 """
 Library for basic math operations.
 """

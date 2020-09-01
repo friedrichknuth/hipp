@@ -14,7 +14,7 @@ Library with core image pre-processing functions.
     
 def compute_intersection_angle(fiducial_locations):
     # Extract diametrically opposed fiducial marker coordinates. 
-    # Order is the same for center and corner fiducials.
+    # Order is the same for midside and corner fiducials.
     
     A0 = fiducial_locations[0]
     A1 = fiducial_locations[2]
@@ -127,7 +127,7 @@ def crop_fiducial(image_file,
     return output_file_name
 
 
-def define_center_windows(image_array):
+def define_midside_windows(image_array):
     
     half_image_height     = int(image_array.shape[0] / 2)
     quarter_image_height  = int(half_image_height / 2)
@@ -135,30 +135,30 @@ def define_center_windows(image_array):
     half_image_width     = int(image_array.shape[1] / 2)
     quarter_image_width  = int(half_image_width / 2)
     
-    center_left    = [quarter_image_height,
+    midside_left    = [quarter_image_height,
                       half_image_height + quarter_image_height,
                       0, 
                       quarter_image_width]
 
-    center_top     = [0,
+    midside_top     = [0,
                       quarter_image_height,
                       quarter_image_width,
                       half_image_width + quarter_image_width]
 
-    center_right   = [quarter_image_height,
+    midside_right   = [quarter_image_height,
                       half_image_height + quarter_image_height,
                       half_image_width + quarter_image_width,
                       image_array.shape[1]]
 
 
-    center_bottom  = [half_image_height + quarter_image_height,
+    midside_bottom  = [half_image_height + quarter_image_height,
                       image_array.shape[0],
                       quarter_image_width,
                       half_image_width + quarter_image_width]
                      
-    center_windows = [center_left, center_top, center_right, center_bottom]
+    midside_windows = [midside_left, midside_top, midside_right, midside_bottom]
     
-    return center_windows
+    return midside_windows
 
 def define_corner_windows(image_array):
     
@@ -249,7 +249,7 @@ def detect_subpixel_fiducial_coordinates(image_file,
                                          image_array,
                                          matches,
                                          template_high_res_zoomed_file,
-                                         labels = ['center_left', 'center_top', 'center_right', 'center_bottom'],
+                                         labels = ['midside_left', 'midside_top', 'midside_right', 'midside_bottom'],
                                          distance_from_loc = 200,
                                          factor = 8,
                                          cleanup=True,
@@ -310,15 +310,15 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                           image_files_extension ='.tif',
                           template_file = None,
                           template_high_res_zoomed_file = None,
-                          center_fiducials=False,
+                          midside_fiducials=False,
                           corner_fiducials=False,
                           qc=True):
     
     """
     Function to iteratively detect fiducial markers in a set of images and return as pandas.DataFrame.
                            
-    Ensure that the templates correspond to either the fiducial markers at the center of the image edges, 
-    or at the image corners. Specify flag accordingly.
+    Ensure that the templates correspond to either the fiducial markers at the midside or corners. 
+    Specify flag accordingly.
     """
     
     images = sorted(glob.glob(os.path.join(image_files_directory,'*'+image_files_extension)))
@@ -332,12 +332,12 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
         image_array = cv2.imread(image_file,cv2.IMREAD_GRAYSCALE)
         
         # Subset image array into window slices to speed up template matching
-        if center_fiducials:
-            windows = hipp.core.define_center_windows(image_array)
+        if midside_fiducials:
+            windows = hipp.core.define_midside_windows(image_array)
         elif corner_fiducials:
             windows = hipp.core.define_corner_windows(image_array)
         else:
-            print("Please specify center or corner fiducials and provide corresponding templates.")
+            print("Please specify midside or corner fiducials and provide corresponding templates.")
             break
         
         slices = hipp.core.slice_image_frame(image_array,windows)
@@ -347,8 +347,8 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                                                 template_array,
                                                 windows)
         
-        if center_fiducials:
-            labels = ['center_left','center_top','center_right','center_bottom']
+        if midside_fiducials:
+            labels = ['midside_left','midside_top','midside_right','midside_bottom']
         elif corner_fiducials:
             labels = ['corner_top_left','corner_top_right','corner_bottom_right','corner_bottom_left']
         quality_score_labels = [sub + '_score' for sub in labels]
@@ -360,13 +360,10 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                                                                 labels=labels,
                                                                 qc=qc)
                                                  
-        # intersection_angle = hipp.core.compute_intersection_angle(subpixel_fiducial_locations)
-        # principal_point = hipp.core.compute_principal_point(subpixel_fiducial_locations,
-        #                                                     subpixel_quality_scores)
+        intersection_angle = hipp.core.compute_intersection_angle(subpixel_fiducial_locations)
                           
         fiducial_locations.append(subpixel_fiducial_locations)
-        # intersection_angles.append(intersection_angle)
-        # principal_points.append([principal_point])
+        intersection_angles.append(intersection_angle)
         quality_scores.append(subpixel_quality_scores)
     
     
@@ -382,8 +379,7 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                      fiducial_locations_df,
                      quality_scores_df,
                      # intersection_angles_df,
-                     principal_points_df,
-                 ],
+                     principal_points_df],
                      axis=1)
 
     return df
