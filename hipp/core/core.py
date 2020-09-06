@@ -313,6 +313,26 @@ def eval_and_compute_principal_point(P1, P1_score, P1_median_score,
     if P1_median_score - P1_score < threshold and P2_median_score - P2_score < threshold:
         principal_point = hipp.math.midpoint(P1[1], P1[0], P2[1], P2[0])
         return principal_point
+        
+def eval_matches(df,
+                 split_position_tuples=False,
+                 threshold=0.01):
+    """
+    Replaces fiducial marker positions that received a low score with np.nan in place.
+    A low score is determined by the difference between the median score for a given fidcuial marker position
+    accross all images and a given score exceeding the threshold.
+    Removes score columns and splits position tuples into seperate columns.
+    """
+    df = hipp.core.nan_low_scoring_fiducial_matches(df,threshold=threshold)
+    
+    columns = df.columns.values
+    columns = [ x for x in columns if "score" not in x ]
+    df = df[columns]
+    
+    if split_position_tuples:
+        df = hipp.core.split_position_tuples(df)
+    
+    return df
 
 def geometric_image_restitution(df_merged,
                                 df_true,
@@ -481,13 +501,8 @@ def match_template(image_array,
     
 def merge_midside_df_corner_df(df_corner, 
                                df_midside,
-                               remove_low_scoring_fiducials=True,
                                compute_mean_principal_point=True,
                                split_position_tuples=True):
-    
-    if remove_low_scoring_fiducials:
-        hipp.core.remove_low_scoring_fiducial_matches(df_midside)
-        hipp.core.remove_low_scoring_fiducial_matches(df_corner)
         
     if compute_mean_principal_point:
         df = hipp.core.compute_mean_midside_corner_principal_point(df_corner, df_midside)
@@ -497,25 +512,12 @@ def merge_midside_df_corner_df(df_corner,
         
         df_merged = pd.merge(df_midside, df_corner, on='fileName')
         df_merged = pd.concat([df_merged,df['principal_point']],axis=1)
-        
-        columns = df_merged.columns.values
-        columns = [ x for x in columns if "score" not in x ]
-        df_merged = df_merged[columns]
     
     else:
         df_merged = pd.merge(df_midside, df_corner, on='fileName')
         
     if split_position_tuples:
-        keys = df_merged.keys().values[1:]
-
-        for key in keys:
-            df = pd.DataFrame(df_merged[key].tolist(), 
-                              index=df_merged.index, 
-                              columns=[key+'_y', key+'_x'])
-    
-            df_merged = pd.concat([df_merged,df],axis=1)
-    
-        df_merged = df_merged.drop(keys, axis = 1)
+        df_merged = hipp.core.split_position_tuples(df_merged)
         
     return df_merged
 
@@ -587,12 +589,13 @@ def prepare_true_fiducial_coordinates(dist_pp_true_list,
     
     return df_merged, df_true
     
-def remove_low_scoring_fiducial_matches(df,threshold=0.01):
+def nan_low_scoring_fiducial_matches(df,threshold=0.01):
     """
-    Replaces fiducial marker positions that received a low score with None in place.
+    Replaces fiducial marker positions that received a low score with np.nan in place.
     A low score is determined by the difference between the median score for a given fidcuial marker position
     accross all images and a given score exceeding the threshold.
     """
+    df = df.copy()
     for i in np.arange(1,5):
         fiducials = df.iloc[:,i].values
         corresponding_scores = df.iloc[:,i+4].values
@@ -602,6 +605,7 @@ def remove_low_scoring_fiducial_matches(df,threshold=0.01):
         for index,value in enumerate(corresponding_scores):
             if median_score-value > threshold:
                 fiducials[index]= np.nan
+    return df
     
 def slice_image_frame(image_array, 
                       windows):
@@ -613,3 +617,17 @@ def slice_image_frame(image_array,
         slices.append(slice_array)
         
     return slices
+    
+def split_position_tuples(df,skip=1):
+    df = df.copy()
+    keys = df.keys().values[skip:]
+
+    for key in keys:
+        df_clean = pd.DataFrame(df[key].tolist(), 
+                          index=df.index, 
+                          columns=[key+'_y', key+'_x'])
+
+        df = pd.concat([df,df_clean],axis=1)
+
+    df = df.drop(keys, axis = 1)
+    return df
