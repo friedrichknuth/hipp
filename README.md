@@ -36,7 +36,7 @@ See [notebooks](./examples/) for processing examples.
 ```
 $ git clone https://github.com/friedrichknuth/hipp.git
 $ cd ./hipp
-$ conda create -f environment.yml
+$ conda env create -f environment.yml
 $ conda activate hipp
 $ pip install -e .
 ```
