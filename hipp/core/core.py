@@ -78,7 +78,16 @@ def compute_principal_points(fiducial_locations_df, quality_scores_df):
     
     return principal_points_df
     
-    
+def compute_mean_midside_corner_principal_point(df_corner, df_midside):
+    df = pd.concat([pd.DataFrame(df_midside.principal_point.to_list(), columns=['midside_y',
+                                                                               'midside_x']),
+                    pd.DataFrame(df_corner.principal_point.to_list(), columns=['corner_y',
+                                                                               'corner_x'])],axis=1)
+    df['principal_point'] = list(zip(df[['midside_y', 'corner_y']].mean(axis=1),
+                                     df[['midside_x', 'corner_x']].mean(axis=1)))
+                                     
+    return df
+                                     
 def create_fiducial_template(image_file, 
                              output_directory = 'fiducials',
                              output_file_name='fiducial.tif',
@@ -304,7 +313,82 @@ def eval_and_compute_principal_point(P1, P1_score, P1_median_score,
     if P1_median_score - P1_score < threshold and P2_median_score - P2_score < threshold:
         principal_point = hipp.math.midpoint(P1[1], P1[0], P2[1], P2[0])
         return principal_point
+
+def geometric_image_restitution(df_merged,
+                                df_true,
+                                image_file_name_column_name = 'fileName',
+                                output_directory = 'input_data/raw_images_cropped_transformed',
+                                transform=True,
+                                output_image_xy_size=11250):
+    
+    p = pathlib.Path(output_directory)
+    p.mkdir(parents=True, exist_ok=True)
+    
+    # replace true coordinates with nan where no corresponding fiducial was detected.
+    keys = df_merged.keys().values[1:]
+    for key in keys:
+        if 'principal_point' not in key:
+            df_true[key+'_true'] = np.where(~np.isnan(df_merged[key]), df_true[key+'_true'], np.nan)
+            
+    # create (y,x) positional tuples to match open cv image coordinates
+    df_true_zipped = pd.DataFrame(df_true[image_file_name_column_name])
+    for i in np.arange(1,len(df_true.keys()),2):
+        key = df_true.iloc[:,i].name.replace('_x','')
+        df_true_zipped[key] = list(zip(df_true.iloc[:,i+1].values, df_true.iloc[:,i].values))
         
+    df_merged_zipped = pd.DataFrame(df_merged[image_file_name_column_name])
+    for i in np.arange(1,len(df_merged.keys()),2):
+        key = df_merged.iloc[:,i].name.replace('_x','')
+        df_merged_zipped[key] = list(zip(df_merged.iloc[:,i+1].values, df_merged.iloc[:,i].values))
+                       
+    
+    for index, row in df_merged_zipped.iterrows():
+                       
+        # extract list of coordinates while removing nan (no match) instances
+        fiducial_coordinates      = df_merged_zipped.iloc[index,2:].values
+        fiducial_coordinates      = np.array([x for x in fiducial_coordinates if ~np.isnan(x).any()], dtype=float)
+
+        fiducial_coordinates_true = df_true_zipped.iloc[index,2:].values
+        fiducial_coordinates_true = np.array([x for x in fiducial_coordinates_true if ~np.isnan(x).any()], dtype=float)
+
+        # need at least three points for restitution
+        if len(fiducial_coordinates_true) == len(fiducial_coordinates) and len(fiducial_coordinates) >=3:
+
+            image_file      = df_merged_zipped[image_file_name_column_name].iloc[index]
+            image_array     = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+            principal_point = df_merged_zipped['principal_point'].iloc[index]
+
+            if transform == True:
+                image_array_transformed, tform = hipp.image.affine_transform_image(image_array, 
+                                                                                   fiducial_coordinates, 
+                                                                                   fiducial_coordinates_true)
+                principal_point_transformed = tform(principal_point)[0]
+                
+                # need to convert to int for cropping
+                principal_point_transformed = np.array([int(round(x)) for x in principal_point_transformed])
+
+                cropped_array = hipp.image.crop_about_point(image_array_transformed,
+                                                            principal_point_transformed,
+                                                            output_shape = output_image_xy_size)
+
+            else: 
+
+                principal_point = np.array([int(round(x)) for x in principal_point])
+                cropped_array = hipp.image.crop_about_point(image_array,
+                                                            principal_point,
+                                                            output_shape = output_image_xy_size)
+
+            path, basename, extension = hipp.io.split_file(image_file)
+            out = os.path.join(output_directory,basename+extension)
+
+            cv2.imwrite(out, cropped_array)
+        
+        else:
+            if transform == True:
+                image_file      = df_merged_zipped[image_file_name_column_name].iloc[index]
+                path, basename, extension = hipp.io.split_file(image_file)
+                print("Insufficient (< 3) fiducial markers detected for "+ basename + extension)
+                print("Cannot perform image restitution.")
 
 def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                           image_files_extension ='.tif',
@@ -384,7 +468,6 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
 
     return df
 
-
 def match_template(image_array,
                    template_array):
     
@@ -395,6 +478,130 @@ def match_template(image_array,
     quality_score = result.max()
     
     return match_location, quality_score
+    
+def merge_midside_df_corner_df(df_corner, 
+                               df_midside,
+                               remove_low_scoring_fiducials=True,
+                               compute_mean_principal_point=True,
+                               split_position_tuples=True):
+    
+    if remove_low_scoring_fiducials:
+        hipp.core.remove_low_scoring_fiducial_matches(df_midside)
+        hipp.core.remove_low_scoring_fiducial_matches(df_corner)
+        
+    if compute_mean_principal_point:
+        df = hipp.core.compute_mean_midside_corner_principal_point(df_corner, df_midside)
+        
+        del df_midside['principal_point']
+        del df_corner['principal_point']
+        
+        df_merged = pd.merge(df_midside, df_corner, on='fileName')
+        df_merged = pd.concat([df_merged,df['principal_point']],axis=1)
+        
+        columns = df_merged.columns.values
+        columns = [ x for x in columns if "score" not in x ]
+        df_merged = df_merged[columns]
+    
+    else:
+        df_merged = pd.merge(df_midside, df_corner, on='fileName')
+        
+    if split_position_tuples:
+        keys = df_merged.keys().values[1:]
+
+        for key in keys:
+            df = pd.DataFrame(df_merged[key].tolist(), 
+                              index=df_merged.index, 
+                              columns=[key+'_y', key+'_x'])
+    
+            df_merged = pd.concat([df_merged,df],axis=1)
+    
+        df_merged = df_merged.drop(keys, axis = 1)
+        
+    return df_merged
+
+def prepare_true_fiducial_coordinates(dist_pp_true_list,
+                                      df_merged,
+                                      scanning_resolution=0.02,
+                                      image_file_name_column_name='fileName',
+                                      midside_fiducials=True,
+                                      corner_fiducials=True):
+
+    # prepare row for each image
+    df_true = pd.DataFrame(df_merged[image_file_name_column_name])
+    
+    # prepare columns
+    dist_pp_true_list_names =[]
+    if midside_fiducials:
+        midside_true_names = ['midside_left_dist_pp_true_mm_x',
+                          'midside_left_dist_pp_true_mm_y',
+                          'midside_top_dist_pp_true_mm_x',
+                          'midside_top_dist_pp_true_mm_y',
+                          'midside_right_dist_pp_true_mm_x',
+                          'midside_right_dist_pp_true_mm_y',
+                          'midside_bottom_dist_pp_true_mm_x',
+                          'midside_bottom_dist_pp_true_mm_y']
+    else:
+        midside_true_names = []
+    dist_pp_true_list_names.extend(midside_true_names)
+    if corner_fiducials:
+        corner_true_names = ['corner_top_left_dist_pp_true_mm_x',
+                          'corner_top_left_dist_pp_true_mm_y',
+                          'corner_top_right_dist_pp_true_mm_x',
+                          'corner_top_right_dist_pp_true_mm_y',
+                          'corner_bottom_right_dist_pp_true_mm_x',
+                          'corner_bottom_right_dist_pp_true_mm_y',
+                          'corner_bottom_left_dist_pp_true_mm_x',
+                          'corner_bottom_left_dist_pp_true_mm_y']
+    else:
+        corner_true_names = []
+    dist_pp_true_list_names.extend(corner_true_names)
+    
+    for i,v in enumerate(dist_pp_true_list_names):
+        df_true[v] = dist_pp_true_list[i]  
+    
+    # convert from mm to px
+    keys = df_true.keys().values[1:]
+    for key in keys:
+        df_true[key.replace('_mm','')] = df_true[key] / scanning_resolution
+    df_true = df_true.drop(keys, axis = 1)
+    
+    # add computed principal point coordinates
+    df_true['principal_point_x'] = df_merged['principal_point_x']
+    df_true['principal_point_y'] = df_merged['principal_point_y']
+    
+    # compute true fiducial marker coordinates from principal point
+    keys = df_true.keys().values[1:-2]
+    for key in keys:
+        if 'x' in key and 'principal_point' not in key:
+            df_true[key.replace('_dist_pp_true_x', '_x_true')] = df_true['principal_point_x'] + df_true[key]
+        elif 'y' in key and 'principal_point' not in key:
+            df_true[key.replace('_dist_pp_true_y', '_y_true')] = df_true['principal_point_y'] - df_true[key]
+    df_true = df_true.drop(keys, axis = 1)
+    
+    # reorder and rename columns
+    reorder_df_columns_list = []
+    for i in df_true.keys().values:
+        reorder_df_columns_list.append(i.replace('_true', ''))
+        
+    df_merged = df_merged[reorder_df_columns_list]
+    
+    return df_merged, df_true
+    
+def remove_low_scoring_fiducial_matches(df,threshold=0.01):
+    """
+    Replaces fiducial marker positions that received a low score with None in place.
+    A low score is determined by the difference between the median score for a given fidcuial marker position
+    accross all images and a given score exceeding the threshold.
+    """
+    for i in np.arange(1,5):
+        fiducials = df.iloc[:,i].values
+        corresponding_scores = df.iloc[:,i+4].values
+        
+        median_score = np.median(corresponding_scores)
+        
+        for index,value in enumerate(corresponding_scores):
+            if median_score-value > threshold:
+                fiducials[index]= np.nan
     
 def slice_image_frame(image_array, 
                       windows):
