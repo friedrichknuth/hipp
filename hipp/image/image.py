@@ -19,8 +19,6 @@ def affine_transform_image(image_array,
     tform = tf.AffineTransform()
     tform.estimate(coordinates, coordinates_true)
     
-    transformed = tform(coordinates)
-    
     image_array_transformed = tf.warp(image_array, tform, output_shape=output_dim)
     image_array_transformed = (image_array_transformed*255).astype(np.uint8)
     
