@@ -334,7 +334,7 @@ def eval_matches(df,
     
     return df
 
-def geometric_image_restitution(df_merged,
+def geometric_image_restitution(df_detected,
                                 df_true,
                                 image_file_name_column_name = 'fileName',
                                 output_directory = 'input_data/raw_images_cropped_transformed',
@@ -345,10 +345,10 @@ def geometric_image_restitution(df_merged,
     p.mkdir(parents=True, exist_ok=True)
     
     # replace true coordinates with nan where no corresponding fiducial was detected.
-    keys = df_merged.keys().values[1:]
+    keys = df_detected.keys().values[1:]
     for key in keys:
         if 'principal_point' not in key:
-            df_true[key+'_true'] = np.where(~np.isnan(df_merged[key]), df_true[key+'_true'], np.nan)
+            df_true[key+'_true'] = np.where(~np.isnan(df_detected[key]), df_true[key+'_true'], np.nan)
             
     # create (y,x) positional tuples to match open cv image coordinates
     df_true_zipped = pd.DataFrame(df_true[image_file_name_column_name])
@@ -356,16 +356,16 @@ def geometric_image_restitution(df_merged,
         key = df_true.iloc[:,i].name.replace('_x','')
         df_true_zipped[key] = list(zip(df_true.iloc[:,i+1].values, df_true.iloc[:,i].values))
         
-    df_merged_zipped = pd.DataFrame(df_merged[image_file_name_column_name])
-    for i in np.arange(1,len(df_merged.keys()),2):
-        key = df_merged.iloc[:,i].name.replace('_x','')
-        df_merged_zipped[key] = list(zip(df_merged.iloc[:,i+1].values, df_merged.iloc[:,i].values))
+    df_detected_zipped = pd.DataFrame(df_detected[image_file_name_column_name])
+    for i in np.arange(1,len(df_detected.keys()),2):
+        key = df_detected.iloc[:,i].name.replace('_x','')
+        df_detected_zipped[key] = list(zip(df_detected.iloc[:,i+1].values, df_detected.iloc[:,i].values))
                        
     
-    for index, row in df_merged_zipped.iterrows():
+    for index, row in df_detected_zipped.iterrows():
                        
         # extract list of coordinates while removing nan (no match) instances
-        fiducial_coordinates      = df_merged_zipped.iloc[index,2:].values
+        fiducial_coordinates      = df_detected_zipped.iloc[index,2:].values
         fiducial_coordinates      = np.array([x for x in fiducial_coordinates if ~np.isnan(x).any()], dtype=float)
 
         fiducial_coordinates_true = df_true_zipped.iloc[index,2:].values
@@ -374,9 +374,9 @@ def geometric_image_restitution(df_merged,
         # need at least three points for restitution
         if len(fiducial_coordinates_true) == len(fiducial_coordinates) and len(fiducial_coordinates) >=3:
 
-            image_file      = df_merged_zipped[image_file_name_column_name].iloc[index]
+            image_file      = df_detected_zipped[image_file_name_column_name].iloc[index]
             image_array     = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
-            principal_point = df_merged_zipped['principal_point'].iloc[index]
+            principal_point = df_detected_zipped['principal_point'].iloc[index]
 
             if transform == True:
                 image_array_transformed, tform = hipp.image.affine_transform_image(image_array, 
@@ -405,7 +405,7 @@ def geometric_image_restitution(df_merged,
         
         else:
             if transform == True:
-                image_file      = df_merged_zipped[image_file_name_column_name].iloc[index]
+                image_file      = df_detected_zipped[image_file_name_column_name].iloc[index]
                 path, basename, extension = hipp.io.split_file(image_file)
                 print("Insufficient (< 3) fiducial markers detected for "+ basename + extension)
                 print("Cannot perform image restitution.")
@@ -510,26 +510,26 @@ def merge_midside_df_corner_df(df_corner,
         del df_midside['principal_point']
         del df_corner['principal_point']
         
-        df_merged = pd.merge(df_midside, df_corner, on='fileName')
-        df_merged = pd.concat([df_merged,df['principal_point']],axis=1)
+        df_detected = pd.merge(df_midside, df_corner, on='fileName')
+        df_detected = pd.concat([df_detected,df['principal_point']],axis=1)
     
     else:
-        df_merged = pd.merge(df_midside, df_corner, on='fileName')
+        df_detected = pd.merge(df_midside, df_corner, on='fileName')
         
     if split_position_tuples:
-        df_merged = hipp.core.split_position_tuples(df_merged)
+        df_detected = hipp.core.split_position_tuples(df_detected)
         
-    return df_merged
+    return df_detected
 
 def prepare_true_fiducial_coordinates(dist_pp_true_list,
-                                      df_merged,
+                                      df_detected,
                                       scanning_resolution=0.02,
                                       image_file_name_column_name='fileName',
                                       midside_fiducials=True,
                                       corner_fiducials=True):
 
     # prepare row for each image
-    df_true = pd.DataFrame(df_merged[image_file_name_column_name])
+    df_true = pd.DataFrame(df_detected[image_file_name_column_name])
     
     # prepare columns
     dist_pp_true_list_names =[]
@@ -568,8 +568,8 @@ def prepare_true_fiducial_coordinates(dist_pp_true_list,
     df_true = df_true.drop(keys, axis = 1)
     
     # add computed principal point coordinates
-    df_true['principal_point_x'] = df_merged['principal_point_x']
-    df_true['principal_point_y'] = df_merged['principal_point_y']
+    df_true['principal_point_x'] = df_detected['principal_point_x']
+    df_true['principal_point_y'] = df_detected['principal_point_y']
     
     # compute true fiducial marker coordinates from principal point
     keys = df_true.keys().values[1:-2]
@@ -585,9 +585,9 @@ def prepare_true_fiducial_coordinates(dist_pp_true_list,
     for i in df_true.keys().values:
         reorder_df_columns_list.append(i.replace('_true', ''))
         
-    df_merged = df_merged[reorder_df_columns_list]
+    df_detected = df_detected[reorder_df_columns_list]
     
-    return df_merged, df_true
+    return df_detected, df_true
     
 def nan_low_scoring_fiducial_matches(df,threshold=0.01):
     """
