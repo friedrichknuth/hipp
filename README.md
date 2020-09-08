@@ -41,12 +41,6 @@ $ conda activate hipp
 $ pip install -e .
 ```
 
-Download and install the [NASA Ames Stereo Pipeline](https://ti.arc.nasa.gov/tech/asr/groups/intelligent-robotics/ngt/stereo/)
-
 ### References
-
-NASA Ames Stereo Pipeline [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.1345235.svg)](https://doi.org/10.5281/zenodo.1345235)
-
-Beyer, Ross A., Oleg Alexandrov, and Scott McMichael (2018). "The Ames Stereo Pipeline: NASA's open source software for deriving and processing terrain data." Earth and Space Science 5.9 : 537-548.
 
 Bradski, G. (2000). "The OpenCV Library". Dr. Dobb&#x27;s Journal of Software Tools.
