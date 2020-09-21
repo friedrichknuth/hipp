@@ -12,7 +12,7 @@ import hipp
 Library with core image pre-processing functions.
 """
     
-def compute_intersection_angle(fiducial_locations):
+def compute_fiducial_intersection_angle(fiducial_locations):
     # Extract diametrically opposed fiducial marker coordinates. 
     # Order is the same for midside and corner fiducials.
     
@@ -21,12 +21,10 @@ def compute_intersection_angle(fiducial_locations):
     B0 = fiducial_locations[1]
     B1 = fiducial_locations[3]
     
-    arc1 = np.rad2deg(np.arctan2(B1[1] - B0[1],
-                             B1[0] - B0[0]))
-
-    arc2 = np.rad2deg(np.arctan2(A1[1] - A0[1],
-                                 A1[0] - A0[0]))
-    intersection_angle = arc1-arc2
+    m1 = hipp.math.slope(A0[0], A0[1], A1[0], A1[1])
+    m2 = hipp.math.slope(B0[0], B0[1], B1[0], B1[1])
+    
+    intersection_angle = abs(hipp.math.intersection_angle(m1, m2))
     
     return intersection_angle
 
@@ -401,7 +399,7 @@ def geometric_image_restitution(df_detected,
             path, basename, extension = hipp.io.split_file(image_file)
             out = os.path.join(output_directory,basename+extension)
 
-            cv2.imwrite(out, cropped_array)
+            cv2.imwrite(out, image_array_transformed)
         
         else:
             if transform == True:
@@ -464,7 +462,7 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                                                                 labels=labels,
                                                                 qc=qc)
                                                  
-        intersection_angle = hipp.core.compute_intersection_angle(subpixel_fiducial_locations)
+        intersection_angle = hipp.core.compute_fiducial_intersection_angle(subpixel_fiducial_locations)
                           
         fiducial_locations.append(subpixel_fiducial_locations)
         intersection_angles.append(intersection_angle)
@@ -475,18 +473,19 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
     images_df = pd.DataFrame(images,columns=['fileName'])
     fiducial_locations_df = pd.DataFrame(fiducial_locations,columns=labels)
     quality_scores_df = pd.DataFrame(quality_scores, columns=quality_score_labels)
-    # intersection_angles_df = pd.DataFrame(intersection_angles,columns=['intersection_angle'])
+    intersection_angles_df = pd.DataFrame(intersection_angles,columns=['intersection_angle'])
     principal_points_df = hipp.core.compute_principal_points(fiducial_locations_df, 
                                                              quality_scores_df)
 
     df  = pd.concat([images_df,
                      fiducial_locations_df,
                      quality_scores_df,
-                     # intersection_angles_df,
                      principal_points_df],
                      axis=1)
+                     
+    intersection_angles_df = pd.concat([images_df,intersection_angles_df],axis=1)
 
-    return df
+    return df, intersection_angles_df
 
 def match_template(image_array,
                    template_array):
