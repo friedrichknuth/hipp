@@ -12,14 +12,29 @@ Library for image processing functions.
 
 def affine_transform_image(image_array, 
                            coordinates, 
-                           coordinates_true):
+                           coordinates_true,
+                           order=3):
+    """
+    Computes affine transformation between coordinates and coordinates_true, then transforms image array.
+                           
+    The order of interpolation.
+    0: Nearest-neighbor
+    1: Bi-linear
+    2: Bi-quadratic
+    3: Bi-cubic
+    4: Bi-quartic
+    5: Bi-quintic
+    """
     
     output_dim = image_array.shape
     
     tform = tf.AffineTransform()
     tform.estimate(coordinates, coordinates_true)
     
-    image_array_transformed = tf.warp(image_array, tform, output_shape=output_dim)
+    # compute inverse transformation matrix
+    A = np.linalg.inv(tform.params) 
+    
+    image_array_transformed = tf.warp(image_array, A, output_shape=output_dim, order=order)
     image_array_transformed = (image_array_transformed*255).astype(np.uint8)
     
     return image_array_transformed, tform
