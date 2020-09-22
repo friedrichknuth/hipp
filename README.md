@@ -17,16 +17,15 @@ Library to pre-process scanned historical images for Structure from Motion (SfM)
 - Replaces poor matches with np.nan based on threshold
 - Computes estimated principal point
 - Quality Control
-  - Principal point and fiducial marker coordinates are output as pickle file for inspection
   - Outputs window image around detected fiducial marker for visual verification
+  - Creates qc plots for fiducial coordinates and intersection angles before and after affine transformation
 - Fiducial marker proxy detection (when actual fiducial markers are cropped out of image frame) (coming soon...)
 
-#### Geometric Image Restitution 
+#### Image Restitution 
 - Computes affine transform between calibrated (true) fiducial marker coordinates and detected coordinates
-  - Calibrated (true) fiducial marker coordinates are computed with respect to the detected principal point
-- Affine transforms images for geometric restitution
+- Affine transforms images
   - Requires minimum of 3 successfully detected fiducial markers to perform restitution
-- Crops transformed image about principal point to standard size
+- Crops images about principal point to standard size
 - Optional Linear or Contrast Limited Adaptive Historgram Equalization (CLAHE) to improve match point detection during SfM processing
 
 ### Examples
