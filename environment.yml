@@ -4,6 +4,7 @@ channels:
 dependencies:
   - bokeh=1.3.4
   - datashader
+  - gdal
   - holoviews
   - hvplot
   - opencv
