@@ -88,11 +88,38 @@ def compute_principal_point_from_proxies(df):
         p2 = (row['bottom_y'], row['bottom_x'])
         principal_point_TB = hipp.math.midpoint(p1[1], p1[0], p2[1], p2[0])
         distances.append(hipp.math.distance(p1,p2))
-
-        principal_point = tuple(map(np.nanmean, zip(*(principal_point_TB, principal_point_LR))))
-
-        principal_point = np.array([int(round(x)) for x in principal_point])
-        principal_points.append(principal_point)
+        
+        # if no diametrically opposing proxies are found
+        # use first viable combination of left/right x or top/bottom y
+        # to estimate position
+        if np.isnan(principal_point_LR).any() and np.isnan(principal_point_TB).any():
+        
+            if np.isnan(principal_point_LR).any():
+                principal_point_LR = (row['left_y'], row['top_x'])
+            if np.isnan(principal_point_LR).any():
+                principal_point_LR = (row['left_y'], row['bottom_x'])
+            if np.isnan(principal_point_LR).any():
+                principal_point_LR = (row['right_y'], row['top_x'])
+            if np.isnan(principal_point_LR).any():
+                principal_point_LR = (row['right_y'], row['bottom_x'])
+        
+            if np.isnan(principal_point_LR).any():
+            
+                if np.isnan(principal_point_TB).any():
+                    principal_point_TB = (row['left_y'], row['top_x'])
+                if np.isnan(principal_point_TB).any():
+                    principal_point_TB = (row['left_y'], row['bottom_x'])
+                if np.isnan(principal_point_TB).any():
+                    principal_point_TB = (row['right_y'], row['top_x'])
+                if np.isnan(principal_point_TB).any():
+                    principal_point_TB = (row['right_y'], row['bottom_x'])
+                
+        if np.isnan(principal_point_LR).any() and np.isnan(principal_point_TB).any():
+            print('Something went wrong. Unable to detect any fiducial proxies.')
+        else:
+            principal_point = tuple(map(np.nanmean, zip(*(principal_point_TB, principal_point_LR))))
+            principal_point = np.array([int(round(x)) for x in principal_point])
+            principal_points.append(principal_point)
         
     return principal_points, distances
                     
@@ -599,7 +626,8 @@ def nan_low_scoring_fiducial_matches(df,threshold=0.01):
     return df
 
 def nan_offset_fiducial_proxies(iter_detect_fiducial_proxies_df,
-                                threshold_px = 50):
+                                threshold_px = 50,
+                                missing_proxy=None):
     
     df = pd.DataFrame(list(iter_detect_fiducial_proxies_df['match_locations'].values), 
                       columns=['left','top','right','bottom'])
@@ -611,6 +639,15 @@ def nan_offset_fiducial_proxies(iter_detect_fiducial_proxies_df,
             if abs(value) > threshold_px: # nan if offset from median position
                 df.loc[df.index == index, key] = np.nan
     
+    if missing_proxy   == 'left':
+        df[['left_y'  ,   'left_x']]   = (np.nan,np.nan)
+    elif missing_proxy == 'top':
+        df[['top_y'   ,   'top_x']]    = (np.nan,np.nan)
+    elif missing_proxy == 'right':
+        df[['right_y' ,   'right_x']]  = (np.nan,np.nan)
+    elif missing_proxy == 'bottom':
+        df[['bottom_y',   'bottom_x']] = (np.nan,np.nan)
+        
     return df
     
 def pad_image(image_array,

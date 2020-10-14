@@ -279,7 +279,8 @@ def preprocess_with_fiducial_proxies(image_directory,
                                      template_directory,
                                      buffer_distance=250,
                                      square_dim = None,
-                                     verbose=False):
+                                     verbose=False,
+                                     missing_proxy=None):
     """
     Detects fiducial marker proxies at midside left, top, right, and bottom positions.
     Buffers image with zero values in order to enable moving template over proxy at 
@@ -296,7 +297,7 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                          buffer_distance=buffer_distance,
                                                          verbose=verbose)
 
-    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df)
+    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,missing_proxy=missing_proxy)
 
     principal_points, distances = hipp.core.compute_principal_point_from_proxies(proxy_locations_df)
     
