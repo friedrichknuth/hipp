@@ -2,6 +2,7 @@ import cv2
 import holoviews as hv
 import hvplot
 import hvplot.xarray
+import matplotlib
 import numpy as np
 import os
 import panel as pn
@@ -13,12 +14,16 @@ hv.extension('bokeh')
 
 import hipp
 
+import warnings
+warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
+warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+
 
 
 """
 Library for interactive python tools.
 """
-    
+
 def point_picker(image_file_name,
                  point_count = 1):
     
@@ -77,3 +82,5 @@ def scale_down_number(number, threshold=1000):
         number = number / 2
     number = int(number)
     return number
+    
+    

@@ -15,7 +15,7 @@ def image_restitution(df_detected,
                       transform_coords = True,
                       transform_image = True,
                       crop_image = True,
-                      output_shape = 10800,
+                      square_dim = 10800,
                       interpolation_order = 3,
                       output_directory = 'input_data/preprocessed_images/',
                       qc = True):
@@ -164,7 +164,7 @@ def image_restitution(df_detected,
             principal_point = np.array([int(round(x)) for x in principal_point])
             image_array = hipp.image.crop_about_point(image_array,
                                                       principal_point[::-1], # requires y,x order
-                                                      output_shape = output_shape)
+                                                      square_dim = square_dim)
             path, basename, extension = hipp.io.split_file(image_file)
             out = os.path.join(output_directory,basename+extension)
             cv2.imwrite(out,image_array)
@@ -274,3 +274,37 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                      principal_points_df],
                      axis=1)
     return df
+    
+def preprocess_with_fiducial_proxies(image_directory,
+                                     template_directory,
+                                     buffer_distance=250,
+                                     square_dim = None,
+                                     verbose=False):
+    """
+    Detects fiducial marker proxies at midside left, top, right, and bottom positions.
+    Buffers image with zero values in order to enable moving template over proxy at 
+    image edge for matching.
+    Requires at least one pair of diametrically opposed fiducial markers to
+    approximate principal point.
+    """
+                                     
+    templates = hipp.core.load_midside_fiducial_proxy_templates(template_directory)
+    images = sorted(glob.glob(os.path.join(image_directory,'*.tif')))
+    
+    detected_df = hipp.core.iter_detect_fiducial_proxies(images,
+                                                         templates,
+                                                         buffer_distance=buffer_distance,
+                                                         verbose=verbose)
+
+    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df)
+
+    principal_points, distances = hipp.core.compute_principal_point_from_proxies(proxy_locations_df)
+    
+    if isinstance(square_dim, type(None)):
+        square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+    print("Cropping images to square with dimensions", str(square_dim))
+
+    hipp.core.iter_crop_image_from_file(images,
+                                        principal_points,
+                                        square_dim,
+                                        verbose=verbose)

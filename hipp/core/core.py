@@ -1,10 +1,12 @@
 import cv2
 from collections.abc import Iterable
+import concurrent
 import glob
 import numpy as np
 import os
 import pandas as pd
 import pathlib
+import psutil
 import shutil
 
 import hipp
@@ -71,16 +73,38 @@ def compute_mean_midside_corner_principal_point(df_corner, df_midside):
                                      df[['midside_x', 'corner_x']].mean(axis=1)))
                                      
     return df
-                                     
+    
+def compute_principal_point_from_proxies(df):
+    distances = []
+    principal_points = []
+
+    for index, row in df.iterrows():
+        p1 = (row['left_y'], row['left_x'])
+        p2 = (row['right_y'], row['right_x'])
+        principal_point_LR = hipp.math.midpoint(p1[1], p1[0], p2[1], p2[0])
+        distances.append(hipp.math.distance(p1,p2))
+
+        p1 = (row['top_y'], row['top_x'])
+        p2 = (row['bottom_y'], row['bottom_x'])
+        principal_point_TB = hipp.math.midpoint(p1[1], p1[0], p2[1], p2[0])
+        distances.append(hipp.math.distance(p1,p2))
+
+        principal_point = tuple(map(np.nanmean, zip(*(principal_point_TB, principal_point_LR))))
+
+        principal_point = np.array([int(round(x)) for x in principal_point])
+        principal_points.append(principal_point)
+        
+    return principal_points, distances
+                    
 def create_fiducial_template(image_file, 
                              output_directory = 'fiducials',
                              output_file_name='fiducial.tif',
                              distance_around_fiducial=100):
      
-    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
-
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
+    
+    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
 
     df = hipp.tools.point_picker(image_file)
 
@@ -97,6 +121,64 @@ def create_fiducial_template(image_file,
     
     return out
     
+def create_midside_fiducial_proxies_template(image_file, 
+                                             output_directory = 'input_data/fiducials',
+                                             buffer_distance = 250):
+    
+    print('Select inner most point to crop from for midside fiducial marker proxies,')
+    print('in order from Left - Top - Right - Bottom.')
+    
+    p = pathlib.Path(output_directory)
+    p.mkdir(parents=True, exist_ok=True)
+    
+    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+    image_array = hipp.image.img_linear_stretch(image_array)
+    image_array = hipp.core.pad_image(image_array,
+                                      buffer_distance = buffer_distance)
+    
+    df = hipp.tools.point_picker(image_file,
+                                 point_count = 4)
+    
+    df = df + buffer_distance
+    
+    left_fiducial   = (df.x[0],df.y[0])
+    top_fiducial    = (df.x[1],df.y[1])
+    right_fiducial  = (df.x[2],df.y[2])
+    bottom_fiducial = (df.x[3],df.y[3])
+
+    fiducials = [left_fiducial, top_fiducial, right_fiducial, bottom_fiducial]
+    
+    dist_w, dist_h = buffer_distance, buffer_distance
+    
+    x_L = int(left_fiducial[0]-dist_w)
+    x_R = int(left_fiducial[0])
+    y_T = int(left_fiducial[1]-2*dist_w)
+    y_B = int(left_fiducial[1]+2*dist_w)
+    cropped = image_array[y_T:y_B, x_L:x_R]
+    cv2.imwrite(os.path.join(output_directory,'L.jpg'),cropped)
+
+    x_L = int(top_fiducial[0]-2*dist_h)
+    x_R = int(top_fiducial[0]+2*dist_h)
+    y_T = int(top_fiducial[1]-dist_h)
+    y_B = int(top_fiducial[1])
+    cropped = image_array[y_T:y_B, x_L:x_R]
+    cv2.imwrite(os.path.join(output_directory,'T.jpg'),cropped)
+
+    x_L = int(right_fiducial[0])
+    x_R = int(right_fiducial[0]+dist_w)
+    y_T = int(right_fiducial[1]-2*dist_w)
+    y_B = int(right_fiducial[1]+2*dist_w)
+    cropped = image_array[y_T:y_B, x_L:x_R]
+    cv2.imwrite(os.path.join(output_directory,'R.jpg'),cropped)
+
+    x_L = int(bottom_fiducial[0]-2*dist_h)
+    x_R = int(bottom_fiducial[0]+2*dist_h)
+    y_T = int(bottom_fiducial[1])
+    y_B = int(bottom_fiducial[1]+dist_h)
+    cropped = image_array[y_T:y_B, x_L:x_R]
+    cv2.imwrite(os.path.join(output_directory,'B.jpg'),cropped)
+    
+    return output_directory
     
 def crop_fiducial(image_file,
                   image_array,
@@ -119,6 +201,25 @@ def crop_fiducial(image_file,
     
     return output_file_name
 
+def crop_image_from_file(image_file_principal_point_tuple,
+                         square_dim,
+                         output_directory = 'input_data/cropped_images',
+                         buffer_distance = 250):
+    
+    image_file, principal_point = image_file_principal_point_tuple
+    
+    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+    image_array = hipp.core.pad_image(image_array,
+                                      buffer_distance = buffer_distance)
+    
+    image_array = hipp.image.crop_about_point(image_array,
+                                              principal_point,
+                                              square_dim = square_dim)
+    
+    path, basename, extension = hipp.io.split_file(image_file)
+    out = os.path.join(output_directory,basename+extension)
+    cv2.imwrite(out,image_array)
+    return out
 
 def define_midside_windows(image_array):
     
@@ -195,7 +296,7 @@ def detect_fiducials(slices,
 
     for index, slice_array in enumerate(slices):
         match_location, quality_score = hipp.core.match_template(slice_array,
-                                         template_array)
+                                                                 template_array)
                                          
         match = (windows[index][0] + match_location[0],
                  windows[index][2] + match_location[1])
@@ -204,6 +305,46 @@ def detect_fiducials(slices,
         
     return matches, quality_scores
 
+def detect_fiducial_proxies(image_file,
+                            templates,
+                            buffer_distance=250):
+
+    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+#     image_array = hipp.image.img_linear_stretch(image_array)
+#     image_array = hipp.image.threshold_and_add_noise(image_array)
+    image_array = hipp.core.pad_image(image_array,
+                                      buffer_distance = buffer_distance)
+    windows = hipp.core.define_midside_windows(image_array)
+    slices = hipp.core.slice_image_frame(image_array,windows)
+    
+    matches = []
+    quality_scores = []
+
+    for index, slice_array in enumerate(slices):
+        template = templates[index]
+        # template = hipp.image.img_linear_stretch(template.copy())
+        # template = hipp.image.threshold_and_add_noise(template.copy())
+        match_location, quality_score = hipp.core.match_template(slice_array,template)
+        match = (windows[index][0] + match_location[0],
+                 windows[index][2] + match_location[1])
+        matches.append(match)
+        quality_scores.append(quality_score)
+
+    left, top, right, bottom = matches
+    
+    left_t_shape   = templates[0].shape
+    top_t_shape    = templates[1].shape
+    right_t_shape  = templates[2].shape
+    bottom_t_shape = templates[3].shape
+
+    left_fiducial   = (left[0]   + left_t_shape[0]/2 , left[1]   + left_t_shape[1])
+    top_fiducial    = (top[0]    + top_t_shape[0]    , top[1]    + top_t_shape[1]/2)
+    right_fiducial  = (right[0]  + right_t_shape[0]/2, right[1])
+    bottom_fiducial = (bottom[0]                    , bottom[1] + bottom_t_shape[1]/2)
+
+    matches = [left_fiducial,top_fiducial,right_fiducial,bottom_fiducial]
+    
+    return matches, quality_scores, image_file
 
 def detect_high_res_fiducial(fiducial_crop_high_res_file,
                              template_high_res_zoomed_file,
@@ -317,6 +458,69 @@ def eval_matches(df,
         df = hipp.core.split_position_tuples(df)
     
     return df
+    
+def iter_crop_image_from_file(images,
+                              principal_points,
+                              square_dim,
+                              output_directory = 'input_data/cropped_images',
+                              buffer_distance = 250,
+                              verbose=True):
+    
+    print("Cropping images...")
+    
+    p = pathlib.Path(output_directory)
+    p.mkdir(parents=True, exist_ok=True)
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
+    
+    future = {pool.submit(hipp.core.crop_image_from_file,
+                          img_pp,
+                          square_dim,
+                          buffer_distance=buffer_distance,
+                          output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
+    results=[]
+    for f in concurrent.futures.as_completed(future):
+        r = f.result()
+        if verbose:
+            print("Cropped image at:", r)
+
+def iter_detect_fiducial_proxies(images,
+                                  templates,
+                                  buffer_distance=250,
+                                  verbose=False):
+
+    print("Detecting fiducial proxies...")
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
+    future = {pool.submit(hipp.core.detect_fiducial_proxies,
+                          image_file,
+                          templates,
+                          buffer_distance=buffer_distance): image_file for image_file in images}
+    results=[]
+    for f in concurrent.futures.as_completed(future):
+        r = f.result()
+        if verbose:
+            print("Detected fiducial proxy positions for:", r[2])
+        results.append(r)
+    df = pd.DataFrame(results,columns=['match_locations',
+                                       'scores',
+                                       'file_names']).sort_values(by=['file_names']).reset_index(drop=True)
+    return df
+    
+def load_midside_fiducial_proxy_templates(template_directory):
+    
+    L = os.path.join(template_directory,'L.jpg')
+    T = os.path.join(template_directory,'T.jpg')
+    R = os.path.join(template_directory,'R.jpg')
+    B = os.path.join(template_directory,'B.jpg')
+
+    template_files = [L, T, R, B]
+    templates = []
+
+    for t in template_files:
+        template = cv2.imread(t, cv2.IMREAD_GRAYSCALE)
+        templates.append(template)
+    
+    return templates
 
 def match_template(image_array,
                    template_array):
@@ -331,7 +535,7 @@ def match_template(image_array,
     
 def merge_midside_df_corner_df(df_corner, 
                                df_midside,
-                               image_file_name_column_name = 'fileName'):
+                               file_name_column = 'fileName'):
     
     if isinstance(df_midside, Iterable) and isinstance(df_corner, Iterable):
         df = hipp.core.compute_mean_midside_corner_principal_point(df_corner, df_midside)
@@ -339,13 +543,13 @@ def merge_midside_df_corner_df(df_corner,
         del df_midside['principal_point']
         del df_corner['principal_point']
         
-        df_detected = pd.merge(df_midside, df_corner, on=image_file_name_column_name)
+        df_detected = pd.merge(df_midside, df_corner, on=file_name_column)
         df_detected = pd.concat([df_detected,df['principal_point']],axis=1)
         df_detected = hipp.core.split_position_tuples(df_detected)
         return df_detected
         
     elif not isinstance(df_midside, Iterable) and isinstance(df_corner, Iterable):
-        columns = [image_file_name_column_name, 
+        columns = [file_name_column, 
                    'midside_left_y', 
                    'midside_left_x', 
                    'midside_top_y',
@@ -356,12 +560,12 @@ def merge_midside_df_corner_df(df_corner,
                    'midside_bottom_x']
         df_corner = hipp.core.split_position_tuples(df_corner)
         df_midside = pd.DataFrame(index=df_corner.index,columns=columns)
-        df_midside[image_file_name_column_name] = df_corner[image_file_name_column_name]
-        df_detected = pd.merge(df_midside, df_corner, on=image_file_name_column_name)
+        df_midside[file_name_column] = df_corner[file_name_column]
+        df_detected = pd.merge(df_midside, df_corner, on=file_name_column)
         return df_detected
     
     elif not isinstance(df_corner, Iterable) and isinstance(df_midside, Iterable):
-        columns = [image_file_name_column_name,
+        columns = [file_name_column,
                    'corner_top_left_y',
                    'corner_top_left_x', 
                    'corner_top_right_y', 
@@ -372,8 +576,8 @@ def merge_midside_df_corner_df(df_corner,
                    'corner_bottom_left_x']
         df_midside = hipp.core.split_position_tuples(df_midside)
         df_corner = pd.DataFrame(index=df_midside.index,columns=columns)
-        df_corner[image_file_name_column_name] = df_midside[image_file_name_column_name]
-        df_detected = pd.merge(df_midside, df_corner, on=image_file_name_column_name)
+        df_corner[file_name_column] = df_midside[file_name_column]
+        df_detected = pd.merge(df_midside, df_corner, on=file_name_column)
         return df_detected
 
 def nan_low_scoring_fiducial_matches(df,threshold=0.01):
@@ -393,6 +597,34 @@ def nan_low_scoring_fiducial_matches(df,threshold=0.01):
             if median_score-value > threshold:
                 fiducials[index]= np.nan
     return df
+
+def nan_offset_fiducial_proxies(iter_detect_fiducial_proxies_df,
+                                threshold_px = 50):
+    
+    df = pd.DataFrame(list(iter_detect_fiducial_proxies_df['match_locations'].values), 
+                      columns=['left','top','right','bottom'])
+    df = hipp.core.split_position_tuples(df,skip=0)
+    
+    for key in df.keys():
+        offsets = df[key] - np.median(df[key])
+        for index, value in enumerate(offsets):
+            if abs(value) > threshold_px: # nan if offset from median position
+                df.loc[df.index == index, key] = np.nan
+    
+    return df
+    
+def pad_image(image_array,
+              buffer_distance = 250):
+    """
+    Pad 2D np.array with zeros on all sides.
+    """
+    a=image_array.shape[0] + 2 * buffer_distance
+    b=image_array.shape[1] + 2 * buffer_distance
+    padded_img = np.zeros([a,b],dtype=np.uint8)
+    padded_img[buffer_distance:buffer_distance+image_array.shape[0],
+               buffer_distance:buffer_distance+image_array.shape[1]] = image_array
+    return padded_img
+    
     
 def slice_image_frame(image_array, 
                       windows):

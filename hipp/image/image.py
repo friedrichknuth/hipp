@@ -49,9 +49,9 @@ def clahe_equalize_image(img_gray,
 
 def crop_about_point(image_array,
                      point_yx,
-                     output_shape = 11250):
+                     square_dim = 11250):
     
-    distance_from_point = int(output_shape/2)
+    distance_from_point = int(round(square_dim/2)) # ensure half is non float for array index slicing
     x_L = point_yx[1]-distance_from_point
     x_R = point_yx[1]+distance_from_point
     y_T = point_yx[0]-distance_from_point
@@ -68,7 +68,7 @@ def img_linear_stretch(img_gray,
     return img_rescale
     
 def threshold_and_add_noise(image_array,
-                            threshold=50):
+                            threshold=100):
     mask = image_array > threshold
     rand = np.random.randint(0,256,size=image_array.shape)
     image_array[mask] = rand[mask]
