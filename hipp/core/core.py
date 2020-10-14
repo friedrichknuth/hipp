@@ -498,7 +498,7 @@ def iter_crop_image_from_file(images,
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
     
     future = {pool.submit(hipp.core.crop_image_from_file,
                           img_pp,
@@ -517,7 +517,7 @@ def iter_detect_fiducial_proxies(images,
                                   verbose=False):
 
     print("Detecting fiducial proxies...")
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
     future = {pool.submit(hipp.core.detect_fiducial_proxies,
                           image_file,
                           templates,

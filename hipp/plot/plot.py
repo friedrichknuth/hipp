@@ -1,13 +1,39 @@
+import concurrent
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pathlib
+import psutil
 
 import hipp
 
 """
 Library for common plotting functions.
 """
+
+def iter_plot_proxies(images,
+                      proxy_locations_df,
+                      principal_points,
+                      buffer_distance = 250,
+                      output_directory='qc/proxy_detection',
+                      verbose=True):
+    
+    locations_no_buffer        = proxy_locations_df - buffer_distance
+    locations_no_buffer        = locations_no_buffer.values.tolist()
+    principal_points_no_buffer = np.array(principal_points) - buffer_distance
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
+    future = {pool.submit(hipp.plot.plot_proxies,
+                          payload,
+                          output_directory=output_directory): payload for payload in zip(images, 
+                                                                                         locations_no_buffer,
+                                                                                         principal_points_no_buffer)}
+    results=[]
+    for f in concurrent.futures.as_completed(future):
+        r = f.result()
+        if verbose:
+            print("Fiducial proxy QC plot at:", r)
 
 def plot_images(image_arrays,
                 rows = 5,
@@ -89,3 +115,37 @@ def plot_restitution_qc(qc_df):
         out = os.path.join(output_directory,output_names.pop(0)+'.png')
         plt.savefig(out)
         # plt.close()
+
+def plot_proxies(data,
+                 output_directory=None):
+    
+    image_file        = data[0]
+    proxies           = np.array(data[1])
+    proxies_x         = proxies[1::2]
+    proxies_y         = proxies[::2]
+    principal_point   = data[2]
+    principal_point_x = principal_point[1]
+    principal_point_y = principal_point[0]
+    
+    
+    if isinstance(output_directory, type(None)):
+        output_directory='qc/proxy_detection'
+        
+    p = pathlib.Path(output_directory)
+    p.mkdir(parents=True, exist_ok=True)
+    
+    path, name, ext = hipp.io.split_file(image_file)
+    
+    image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+    
+    fig,ax = plt.subplots(figsize=(10,10))
+    ax.imshow(image_array,cmap='gray')
+    ax.scatter(proxies_x,proxies_y,color='lime',marker='.')
+    ax.scatter(principal_point_x,principal_point_y,color='red', marker='.')
+    plt.tight_layout()
+    
+    output_file_name = os.path.join(output_directory, name+'.png')
+    
+    fig.savefig(output_file_name)
+    plt.close(fig)
+    return output_file_name

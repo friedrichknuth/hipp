@@ -279,14 +279,23 @@ def preprocess_with_fiducial_proxies(image_directory,
                                      template_directory,
                                      buffer_distance=250,
                                      square_dim = None,
-                                     verbose=False,
-                                     missing_proxy=None):
+                                     output_directory = 'input_data/cropped_images',
+                                     verbose=True,
+                                     missing_proxy=None,
+                                     qc_df = True,
+                                     qc_df_output_directory='qc/proxy_detection_data_frames',
+                                     qc_plots=True,
+                                     qc_plots_output_directory='qc/proxy_detection'):
     """
     Detects fiducial marker proxies at midside left, top, right, and bottom positions.
+    
     Buffers image with zero values in order to enable moving template over proxy at 
     image edge for matching.
-    Requires at least one pair of diametrically opposed fiducial markers to
-    approximate principal point.
+    
+    Requires at least two fiducial marker proxies to approximate principal point.
+    
+    To read in and examine QC dataframe use pandas.read_pickle('proxy_locations_df.pd'), 
+    for example.
     """
                                      
     templates = hipp.core.load_midside_fiducial_proxy_templates(template_directory)
@@ -294,12 +303,31 @@ def preprocess_with_fiducial_proxies(image_directory,
     
     detected_df = hipp.core.iter_detect_fiducial_proxies(images,
                                                          templates,
-                                                         buffer_distance=buffer_distance,
-                                                         verbose=verbose)
+                                                         buffer_distance = buffer_distance,
+                                                         verbose         = verbose)
 
-    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,missing_proxy=missing_proxy)
+    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
+                                                               missing_proxy = missing_proxy)
 
     principal_points, distances = hipp.core.compute_principal_point_from_proxies(proxy_locations_df)
+    
+    if qc_df:
+        print("Saving proxy detection QC dataframes to", qc_df_output_directory)
+        p = pathlib.Path(qc_df_output_directory)
+        p.mkdir(parents=True, exist_ok=True)
+        detected_df.to_pickle(os.path.join(qc_df_output_directory,'detected_df.pd'))
+        proxy_locations_df.to_pickle(os.path.join(qc_df_output_directory,'proxy_locations_df.pd'))
+        pd.DataFrame(principal_points).to_pickle(os.path.join(qc_df_output_directory,'principal_points.pd'))
+        pd.DataFrame(distances).to_pickle(os.path.join(qc_df_output_directory,'distances.pd'))
+    
+    if qc_plots:
+        print("Plotting proxy detection QC plots at", qc_plots_output_directory)
+        hipp.plot.iter_plot_proxies(images,
+                                    proxy_locations_df,
+                                    principal_points,
+                                    buffer_distance  = buffer_distance,
+                                    output_directory = qc_plots_output_directory,
+                                    verbose=verbose)
     
     if isinstance(square_dim, type(None)):
         square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
@@ -308,4 +336,8 @@ def preprocess_with_fiducial_proxies(image_directory,
     hipp.core.iter_crop_image_from_file(images,
                                         principal_points,
                                         square_dim,
-                                        verbose=verbose)
+                                        output_directory = output_directory,
+                                        buffer_distance  = buffer_distance,
+                                        verbose = verbose)
+                                        
+                                        
