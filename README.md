@@ -19,7 +19,9 @@ Library to pre-process scanned historical images for Structure from Motion (SfM)
 - Quality Control
   - Outputs window image around detected fiducial marker for visual verification
   - Creates qc plots for fiducial coordinates and intersection angles before and after affine transformation
-- Fiducial marker proxy detection (when actual fiducial markers are cropped out of image frame) (coming soon...)
+  
+#### Fiducial Marker Proxy Detection 
+- Routines to detect proxy for midside fiducial markers, when actual fiducial markers are cropped out of image frame
 
 #### Image Restitution 
 - Computes affine transform between calibrated (true) fiducial marker coordinates and detected coordinates
