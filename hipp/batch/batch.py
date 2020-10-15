@@ -309,7 +309,8 @@ def preprocess_with_fiducial_proxies(image_directory,
     proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
                                                                missing_proxy = missing_proxy)
 
-    principal_points, distances = hipp.core.compute_principal_point_from_proxies(proxy_locations_df)
+    principal_points, distances, intersection_angles = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
+                                                                                                      verbose=verbose)
     
     if qc_df:
         print("Saving proxy detection QC dataframes to", qc_df_output_directory)
@@ -319,6 +320,7 @@ def preprocess_with_fiducial_proxies(image_directory,
         proxy_locations_df.to_pickle(os.path.join(qc_df_output_directory,'proxy_locations_df.pd'))
         pd.DataFrame(principal_points).to_pickle(os.path.join(qc_df_output_directory,'principal_points.pd'))
         pd.DataFrame(distances).to_pickle(os.path.join(qc_df_output_directory,'distances.pd'))
+        pd.DataFrame(intersection_angles).to_pickle(os.path.join(qc_df_output_directory,'intersection_angles.pd'))
     
     if qc_plots:
         print("Plotting proxy detection QC plots at", qc_plots_output_directory)
