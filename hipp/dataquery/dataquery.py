@@ -15,17 +15,14 @@ Library query and download historical image data from public archives.
 """
 
 def download_image(output_directory, 
-                   payload,
-                   verbose=True):
+                   payload):
     url, output_file_base_name = payload
-    if verbose:
-        print("Downloading", output_file_base_name)
     output_file = os.path.join(output_directory, output_file_base_name+'.tif')
     urllib.request.urlretrieve(url,output_file)
     final_output = hipp.utils.optimize_geotif(output_file)
     os.remove(output_file)
     os.rename(final_output, output_file)
-    return final_output
+    return output_file
     
 def EE_login(username,
              password,
@@ -81,6 +78,7 @@ def NAGAP_download_images_to_disk(image_metadata,
                                   base_url = 'https://arcticdata.io/metacat/d1/mn/v2/object/',
                                   verbose=True):
                             
+    print("Downloading images...")
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
     
@@ -96,12 +94,12 @@ def NAGAP_download_images_to_disk(image_metadata,
     
     future_to_url = {pool.submit(hipp.dataquery.download_image,
                                  output_directory,
-                                 x,
-                                 verbose=verbose): x for x in zip(urls, filenames)}
+                                 x): x for x in zip(urls, filenames)}
     results=[]
     for future in concurrent.futures.as_completed(future_to_url):
         r = future.result()
         results.append(r)
+        print(r)
         
     return output_directory
 

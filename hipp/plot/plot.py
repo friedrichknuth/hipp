@@ -19,21 +19,28 @@ def iter_plot_proxies(images,
                       output_directory='qc/proxy_detection',
                       verbose=True):
     
+    # TODO plotting in parallel causes jupyter python kernel to crash. 
+    # May not be an issue if running as script. Need to investigate...
+    
     locations_no_buffer        = proxy_locations_df - buffer_distance
     locations_no_buffer        = locations_no_buffer.values.tolist()
     principal_points_no_buffer = np.array(principal_points) - buffer_distance
+    
+    for i in zip(images, locations_no_buffer, principal_points_no_buffer):
+        r = hipp.plot.plot_proxies(i,output_directory=output_directory)
+        print("Fiducial proxy QC plot at:", r)
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
-    future = {pool.submit(hipp.plot.plot_proxies,
-                          payload,
-                          output_directory=output_directory): payload for payload in zip(images, 
-                                                                                         locations_no_buffer,
-                                                                                         principal_points_no_buffer)}
-    results=[]
-    for f in concurrent.futures.as_completed(future):
-        r = f.result()
-        if verbose:
-            print("Fiducial proxy QC plot at:", r)
+#     pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
+#     future = {pool.submit(hipp.plot.plot_proxies,
+#                           payload,
+#                           output_directory=output_directory): payload for payload in zip(images, 
+#                                                                                          locations_no_buffer,
+#                                                                                          principal_points_no_buffer)}
+#     results=[]
+#     for f in concurrent.futures.as_completed(future):
+#         r = f.result()
+#         if verbose:
+#             print("Fiducial proxy QC plot at:", r)
 
 def plot_images(image_arrays,
                 rows = 5,
