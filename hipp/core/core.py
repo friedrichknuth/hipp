@@ -117,10 +117,9 @@ def compute_principal_point_from_proxies(df, verbose=True):
                     principal_point_TB = (row['right_y'], row['bottom_x'])
                 
         if np.isnan(principal_point_LR).any() and np.isnan(principal_point_TB).any():
-            print('WARNING: Unable to estimate principal point for:', 
-                  row['file_names'], 
-                  'Using principal point estimate from previous image:', 
-                  str(principal_point))
+            print('WARNING: Unable to estimate principal point for:', row['file_names'])
+            print('WARNING: Using mean principal point estimate from image set instead.')
+            principal_point = (np.nan,np.nan)
             principal_points.append(principal_point)
         else:
             principal_point = tuple(map(np.nanmean, zip(*(principal_point_TB, principal_point_LR))))
@@ -136,7 +135,11 @@ def compute_principal_point_from_proxies(df, verbose=True):
             if not np.isnan(intersection_angle):
                 print('Intersection angle at principal point:', str(intersection_angle))
             else:
-                print('Insufficient fiducial proxies (<4) detected to compute intersection angle.')
+                print('WARNING: Insufficient fiducial proxies (<4) detected to compute intersection angle.')
+                
+    # Use mean principal point estimate from image set to replace instance where < 2 proxies were found.
+    df_tmp = pd.DataFrame(principal_points)
+    principal_points = list(df_tmp.fillna(df_tmp.mean().round().astype(int)).astype(int).values)
         
     return principal_points, distances, intersection_angles
                     
