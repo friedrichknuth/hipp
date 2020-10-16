@@ -74,11 +74,13 @@ def compute_mean_midside_corner_principal_point(df_corner, df_midside):
                                      
     return df
     
-def compute_principal_point_from_proxies(df):
+def compute_principal_point_from_proxies(df, verbose=True):
     distances = []
     principal_points = []
+    intersection_angles = []
 
     for index, row in df.iterrows():
+        print('Computing principal point for:', row['file_names'])
         p1 = (row['left_y'], row['left_x'])
         p2 = (row['right_y'], row['right_x'])
         principal_point_LR = hipp.math.midpoint(p1[1], p1[0], p2[1], p2[0])
@@ -115,13 +117,28 @@ def compute_principal_point_from_proxies(df):
                     principal_point_TB = (row['right_y'], row['bottom_x'])
                 
         if np.isnan(principal_point_LR).any() and np.isnan(principal_point_TB).any():
-            print('Something went wrong. Unable to detect any fiducial proxies.')
+            print('WARNING: Unable to estimate principal point for:', 
+                  row['file_names'], 
+                  'Using principal point estimate from previous image:', 
+                  str(principal_point))
+            principal_points.append(principal_point)
         else:
             principal_point = tuple(map(np.nanmean, zip(*(principal_point_TB, principal_point_LR))))
             principal_point = np.array([int(round(x)) for x in principal_point])
             principal_points.append(principal_point)
+            if verbose:
+                print('Principal point estimated at:', str(principal_point))
         
-    return principal_points, distances
+        proxy_locations    = np.array(list(zip(row.values[1::2], row.values[2::2])))
+        intersection_angle = hipp.qc.compute_opposing_fiducial_intersection_angle(proxy_locations)
+        intersection_angles.append(intersection_angle)
+        if verbose:
+            if not np.isnan(intersection_angle):
+                print('Intersection angle at principal point:', str(intersection_angle))
+            else:
+                print('Insufficient fiducial proxies (<4) detected to compute intersection angle.')
+        
+    return principal_points, distances, intersection_angles
                     
 def create_fiducial_template(image_file, 
                              output_directory = 'fiducials',
@@ -498,7 +515,7 @@ def iter_crop_image_from_file(images,
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
     
     future = {pool.submit(hipp.core.crop_image_from_file,
                           img_pp,
@@ -512,12 +529,12 @@ def iter_crop_image_from_file(images,
             print("Cropped image at:", r)
 
 def iter_detect_fiducial_proxies(images,
-                                  templates,
-                                  buffer_distance=250,
-                                  verbose=False):
+                                 templates,
+                                 buffer_distance=250,
+                                 verbose=False):
 
     print("Detecting fiducial proxies...")
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
     future = {pool.submit(hipp.core.detect_fiducial_proxies,
                           image_file,
                           templates,
@@ -631,9 +648,10 @@ def nan_offset_fiducial_proxies(iter_detect_fiducial_proxies_df,
     
     df = pd.DataFrame(list(iter_detect_fiducial_proxies_df['match_locations'].values), 
                       columns=['left','top','right','bottom'])
-    df = hipp.core.split_position_tuples(df,skip=0)
+    df.insert(0, 'file_names', iter_detect_fiducial_proxies_df['file_names'])
+    df = hipp.core.split_position_tuples(df,skip=1)
     
-    for key in df.keys():
+    for key in df.keys()[1:]:
         offsets = df[key] - np.median(df[key])
         for index, value in enumerate(offsets):
             if abs(value) > threshold_px: # nan if offset from median position

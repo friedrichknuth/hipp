@@ -22,7 +22,7 @@ def iter_plot_proxies(images,
     # TODO plotting in parallel causes jupyter python kernel to crash. 
     # May not be an issue if running as script. Need to investigate...
     
-    locations_no_buffer        = proxy_locations_df - buffer_distance
+    locations_no_buffer        = proxy_locations_df.iloc[:,1:] - buffer_distance
     locations_no_buffer        = locations_no_buffer.values.tolist()
     principal_points_no_buffer = np.array(principal_points) - buffer_distance
     
