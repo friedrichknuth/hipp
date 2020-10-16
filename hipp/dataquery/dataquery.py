@@ -115,59 +115,50 @@ def NAGAP_pre_select_images(nagap_metadata_csv,
     bounds = (ULLON, ULLAT, LRLON, LRLAT)
     year   = 77 # e.g. for year 1977
     """
-    
-    df = pd.read_csv(nagap_metadata_csv)
+    print("Selecting images based on:")           
+    df = pd.read_csv(nagap_metadata_csv, dtype=object)
+    df['Longitude'] = df['Longitude'].astype(float)
+    df['Latitude'] = df['Latitude'].astype(float)
     
     if not isinstance(bounds,type(None)):
+        print('bounds:', bounds)
         df = df[(df['Longitude']>bounds[0]) & 
                 (df['Longitude']<bounds[2]) & 
                 (df['Latitude']>bounds[3]) & 
                 (df['Latitude']<bounds[1])]
     
     if not isinstance(roll,type(None)):
+        print('roll:', roll)
         df = df[df['Roll'] == roll]
         
     if not isinstance(year,type(None)):
-        df = df[df['Year'] == int(year)]
+        print('year:', year)
+        df = df[df['Year'] == str(year)]
         
     if not isinstance(month,type(None)):
-        df = df[df['Month'] == int(month)]
+        print('month:', month)
+        df = df[df['Month'] == str(month)]
         
     if not isinstance(day,type(None)):
-        df = df[df['Day'] == int(day)]
+        print('day:', day)
+        df = df[df['Day'] == str(day)]
         
     df = df.reset_index(drop=True)
     
     if len(list(set(df['Roll'].values))) > 1:
-        print('Multiple camera rolls detected:')
+        print('NOTE: Results contain multiple camera rolls:')
         for i in list(set(df['Roll'].values)):
             print(i)
-        if verbose:
-            print('\nDifferent camera rolls may mean different cameras were used.')
-            t = """
-Recommended:
-Examine the focal length and fiducial markers in the 
-thumbnail images to determine if different cameras were used.
-            
-Optionally:
-Specify a given camera roll for processing, if different cameras were used."""
-            print(t)
         
     if len(list(set(df['Year'].values))) > 1:
-        print('Years with data:')
+        print('NOTE: Results contain multiple years:')
         for i in list(set(df['Year'].values)):
             print(i)
             
     if len(list(set(df['Year'].values))) == 1 and len(list(set(df['Month'].values))) > 1:
-        print('\n\nMultiple months with data in year '+ "'"+ str(int(year))+':')
+        print('NOTE: Results contain multiple months:')
         for i in list(set(df['Month'].values)):
-            print(str(int(i)))
-        if verbose:
-            t = """
-Optionally:
-Specify a given month for processing, if changes to the surface elevation (e.g. due to snow)
-between months are expected."""
-            print(t)
+            print(i)
         
     if not isinstance(output_directory,type(None)):
         out = os.path.join(output_directory,'targets.csv')
