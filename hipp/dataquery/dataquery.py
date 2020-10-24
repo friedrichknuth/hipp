@@ -103,7 +103,7 @@ def NAGAP_download_images_to_disk(image_metadata,
         
     return output_directory
 
-def NAGAP_pre_select_images(nagap_metadata_csv,
+def NAGAP_pre_select_images(image_metadata,
                             bounds=None,
                             roll=None,
                             year=None,
@@ -115,8 +115,13 @@ def NAGAP_pre_select_images(nagap_metadata_csv,
     bounds = (ULLON, ULLAT, LRLON, LRLAT)
     year   = 77 # e.g. for year 1977
     """
-    print("Selecting images based on:")           
-    df = pd.read_csv(nagap_metadata_csv, dtype=object)
+    print("Selecting images based on:")   
+    
+    if not isinstance(image_metadata, type(pd.DataFrame())):
+        df = pd.read_csv(image_metadata, dtype=object)
+    else:
+        df = image_metadata
+
     df['Longitude'] = df['Longitude'].astype(float)
     df['Latitude'] = df['Latitude'].astype(float)
     
