@@ -341,5 +341,6 @@ def preprocess_with_fiducial_proxies(image_directory,
                                         output_directory = output_directory,
                                         buffer_distance  = buffer_distance,
                                         verbose = verbose)
+    return square_dim
                                         
                                         
