@@ -1,3 +1,4 @@
+import glob
 import os
 import cv2
 
@@ -32,6 +33,27 @@ def optimize_geotif(geotif_file_name,
     else:
         hipp.io.run_command(call, verbose=verbose)
         return output_file_name
+
+def optimize_geotifs(input_directory,
+                     keep = False,
+                     verbose=False):
+    print('Optimizing tifs in', input_directory, 'with:')
+    print(*['gdal_translate',
+                '-of','GTiff',
+                '-co','TILED=YES',
+                '-co','COMPRESS=LZW',
+                '-co','BIGTIFF=IF_SAFER'])
+    tifs = sorted(glob.glob(os.path.join(input_directory,'*.tif')))
+    output_tifs = []
+    for tif in tifs:
+        tif_optimized = hipp.utils.optimize_geotif(tif, verbose=verbose)
+        if not keep:
+            os.remove(tif)
+            os.rename(tif_optimized, tif)
+            output_tifs.append(tif)
+        else:
+            output_tifs.append(tif_optimized)
+    return output_tifs
     
 def enhance_geotif_resolution(geotif_file_name,
                               output_file_name=None,
