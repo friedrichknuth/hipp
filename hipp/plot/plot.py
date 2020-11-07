@@ -1,4 +1,6 @@
 import concurrent
+import multiprocessing
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +9,7 @@ import pathlib
 import psutil
 
 import hipp
+from functools import partial
 
 """
 Library for common plotting functions.
@@ -29,18 +32,25 @@ def iter_plot_proxies(images,
     for i in zip(images, locations_no_buffer, principal_points_no_buffer):
         r = hipp.plot.plot_proxies(i,output_directory=output_directory)
         print("Fiducial proxy QC plot at:", r)
+    # print('I AM MAKING SOME CHANGES!!! ThreadPoolExecutor version')
+    # pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
+    # future = {pool.submit(hipp.plot.plot_proxies,
+    #                       payload,
+    #                       output_directory=output_directory): payload for payload in zip(images, 
+    #                                                                                      locations_no_buffer,
+    #                                                                                      principal_points_no_buffer)}
+    # results=[]
+    # for f in concurrent.futures.as_completed(future):
+    #     r = f.result()
+    #     if verbose:
+    #         print("Fiducial proxy QC plot at:", r)
 
-#     pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
-#     future = {pool.submit(hipp.plot.plot_proxies,
-#                           payload,
-#                           output_directory=output_directory): payload for payload in zip(images, 
-#                                                                                          locations_no_buffer,
-#                                                                                          principal_points_no_buffer)}
-#     results=[]
-#     for f in concurrent.futures.as_completed(future):
-#         r = f.result()
-#         if verbose:
-#             print("Fiducial proxy QC plot at:", r)
+    # print('I AM MAKING SOME CHANGES!!! multiprocessing.Pool version')
+    # pool = multiprocessing.Pool()
+    # inputs = [payload for payload in zip(images, locations_no_buffer, principal_points_no_buffer)]
+    # pool.map(partial(hipp.plot.plot_proxies, output_directory=output_directory), inputs)
+
+    
 
 def plot_images(image_arrays,
                 rows = 5,
