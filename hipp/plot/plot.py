@@ -42,6 +42,16 @@ def iter_plot_proxies(images,
 #         if verbose:
 #             print("Fiducial proxy QC plot at:", r)
 
+def plot_histogram(image_array,
+                   figsize=(10, 5)):
+    
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    n, bins, patches = ax.hist(image_array.ravel()[::40],
+                        bins=256, 
+                        range=(0,256))
+    plt.show()
+
 def plot_images(image_arrays,
                 rows = 5,
                 columns = 5,
