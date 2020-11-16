@@ -47,18 +47,32 @@ def thread_downloads(output_directory, urls, file_names):
 
 ## EARTH EXPLORER
 ## Using camel case to keep with API convention, where relevant, to help with debugging.
+
+def EE_checkCompleted(entityIds,
+                      output_directory):
+    completed = sorted(glob.glob(os.path.join(output_directory,'*')))
+    
+    diff = []
+    for i in entityIds:
+        if any(i in s for s in completed):
+            pass
+        else:
+            diff.append(i)
+    return diff
+
 def EE_downloadImages(apiKey,
                       entityIds,
                       label                                = 'test_download',
                       output_directory                     = 'input_data',
                       images_directory_suffix              = 'raw_images',
                       calibration_reports_directory_suffix = 'calibration_reports'):
-
+    
     urls, file_names = hipp.dataquery.EE_stageForDownload(apiKey,
-                                                         entityIds,
-                                                         label = label)
+                                                          entityIds,
+                                                          label = label)
                                                          
     pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+    
     hipp.dataquery.thread_downloads(output_directory, 
                                     urls, 
                                     file_names)
