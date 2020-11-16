@@ -263,6 +263,8 @@ def crop_image_from_file(image_file_principal_point_tuple,
                                               principal_point,
                                               square_dim = square_dim)
     
+    image_array = hipp.image.clahe_equalize_image(image_array)
+    
     path, basename, extension = hipp.io.split_file(image_file)
     out = os.path.join(output_directory,basename+extension)
     cv2.imwrite(out,image_array)
