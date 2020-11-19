@@ -1,6 +1,7 @@
 import concurrent
 import cv2
 import matplotlib.pyplot as plt
+import multiprocessing
 import numpy as np
 import os
 import pathlib
@@ -19,28 +20,15 @@ def iter_plot_proxies(images,
                       output_directory='qc/proxy_detection',
                       verbose=True):
     
-    # TODO plotting in parallel causes jupyter python kernel to crash. 
-    # May not be an issue if running as script. Need to investigate...
-    
     locations_no_buffer        = proxy_locations_df.iloc[:,1:] - buffer_distance
     locations_no_buffer        = locations_no_buffer.values.tolist()
     principal_points_no_buffer = np.array(principal_points) - buffer_distance
-    
-    for i in zip(images, locations_no_buffer, principal_points_no_buffer):
-        r = hipp.plot.plot_proxies(i,output_directory=output_directory)
-        print("Fiducial proxy QC plot at:", r)
 
-#     pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=False))
-#     future = {pool.submit(hipp.plot.plot_proxies,
-#                           payload,
-#                           output_directory=output_directory): payload for payload in zip(images, 
-#                                                                                          locations_no_buffer,
-#                                                                                          principal_points_no_buffer)}
-#     results=[]
-#     for f in concurrent.futures.as_completed(future):
-#         r = f.result()
-#         if verbose:
-#             print("Fiducial proxy QC plot at:", r)
+    pool = multiprocessing.Pool(processes=psutil.cpu_count(logical=False))
+    for i in zip(images,locations_no_buffer,principal_points_no_buffer):
+        pool.apply_async(hipp.plot.plot_proxies, args=(i,output_directory))
+    pool.close()
+    pool.join()
 
 def plot_histogram(image_array,
                    figsize=(10, 5)):
@@ -165,4 +153,5 @@ def plot_proxies(data,
     
     fig.savefig(output_file_name)
     plt.close(fig)
+    print("Fiducial proxy QC plot at:", output_file_name)
     return output_file_name
