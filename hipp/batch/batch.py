@@ -21,7 +21,7 @@ def image_restitution(df_detected,
                       qc = True):
 
     """
-    Computes affine transformation between detected coordinates and true coordinates true, 
+    Computes affine transformation between detected coordinates and true coordinates true,
     then transforms image array.
                            
     The order of interpolation.
@@ -332,7 +332,19 @@ def preprocess_with_fiducial_proxies(image_directory,
                                     verbose=verbose)
     
     if isinstance(square_dim, type(None)):
-        square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+        if isinstance(missing_proxy, type(None)):
+            square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+        else:
+            # get image dimensions and subtract principal points to get minimal viable cropping distance,
+            # given entirely missing side (and fiducial proxy) for image set.
+            y,x = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE).shape
+            df_tmp = pd.DataFrame(principal_points)
+            a = int(round((y - df_tmp.iloc[:,0]).min()))
+            b = int(round((x - df_tmp.iloc[:,1]).min()))
+            if a > b:
+                square_dim = b*2
+            else:
+                square_dim = a*2
     print("Cropping images to square with dimensions", str(square_dim))
 
     hipp.core.iter_crop_image_from_file(images,
