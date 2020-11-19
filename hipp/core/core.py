@@ -202,28 +202,28 @@ def create_midside_fiducial_proxies_template(image_file,
     y_T = int(left_fiducial[1]-2*dist_w)
     y_B = int(left_fiducial[1]+2*dist_w)
     cropped = image_array[y_T:y_B, x_L:x_R]
-    cv2.imwrite(os.path.join(output_directory,'L.jpg'),cropped)
+    cv2.imwrite(os.path.join(output_directory,'L.tif'),cropped)
 
     x_L = int(top_fiducial[0]-2*dist_h)
     x_R = int(top_fiducial[0]+2*dist_h)
     y_T = int(top_fiducial[1]-dist_h)
     y_B = int(top_fiducial[1])
     cropped = image_array[y_T:y_B, x_L:x_R]
-    cv2.imwrite(os.path.join(output_directory,'T.jpg'),cropped)
+    cv2.imwrite(os.path.join(output_directory,'T.tif'),cropped)
 
     x_L = int(right_fiducial[0])
     x_R = int(right_fiducial[0]+dist_w)
     y_T = int(right_fiducial[1]-2*dist_w)
     y_B = int(right_fiducial[1]+2*dist_w)
     cropped = image_array[y_T:y_B, x_L:x_R]
-    cv2.imwrite(os.path.join(output_directory,'R.jpg'),cropped)
+    cv2.imwrite(os.path.join(output_directory,'R.tif'),cropped)
 
     x_L = int(bottom_fiducial[0]-2*dist_h)
     x_R = int(bottom_fiducial[0]+2*dist_h)
     y_T = int(bottom_fiducial[1])
     y_B = int(bottom_fiducial[1]+dist_h)
     cropped = image_array[y_T:y_B, x_L:x_R]
-    cv2.imwrite(os.path.join(output_directory,'B.jpg'),cropped)
+    cv2.imwrite(os.path.join(output_directory,'B.tif'),cropped)
     
     return output_directory
     
@@ -557,11 +557,19 @@ def iter_detect_fiducial_proxies(images,
     
 def load_midside_fiducial_proxy_templates(template_directory):
     
-    L = os.path.join(template_directory,'L.jpg')
-    T = os.path.join(template_directory,'T.jpg')
-    R = os.path.join(template_directory,'R.jpg')
-    B = os.path.join(template_directory,'B.jpg')
-
+    # need to get rid of old jpg templates and recreate for all marker types
+    if os.path.exists(os.path.join(template_directory,'L.tif')):
+        L = os.path.join(template_directory,'L.tif')
+        T = os.path.join(template_directory,'T.tif')
+        R = os.path.join(template_directory,'R.tif')
+        B = os.path.join(template_directory,'B.tif')
+        
+    elif os.path.exists(os.path.join(template_directory,'L.jpg')):
+        L = os.path.join(template_directory,'L.jpg')
+        T = os.path.join(template_directory,'T.jpg')
+        R = os.path.join(template_directory,'R.jpg')
+        B = os.path.join(template_directory,'B.jpg')
+        
     template_files = [L, T, R, B]
     templates = []
 
