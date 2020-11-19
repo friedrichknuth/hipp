@@ -470,17 +470,17 @@ def NAGAP_pre_select_images(image_metadata,
     
     if len(list(set(df['Roll'].values))) > 1:
         print('NOTE: Filter results contain multiple camera rolls:')
-        for i in list(set(df['Roll'].values)):
+        for i in sorted(list(set(df['Roll'].values))):
             print(i)
         
     if len(list(set(df['Year'].values))) > 1:
         print('NOTE: Filter results contain multiple years:')
-        for i in list(set(df['Year'].values)):
+        for i in sorted(list(set(df['Year'].values))):
             print(i)
             
     if len(list(set(df['Year'].values))) == 1 and len(list(set(df['Month'].values))) > 1:
         print('NOTE: Filter results contain multiple months:')
-        for i in list(set(df['Month'].values)):
+        for i in sorted(list(set(df['Month'].values))):
             print(i)
         
     if not isinstance(output_directory,type(None)):
