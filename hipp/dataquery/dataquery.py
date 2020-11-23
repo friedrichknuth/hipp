@@ -460,11 +460,11 @@ def NAGAP_pre_select_images(image_metadata,
         
     if not isinstance(month,type(None)):
         print('month:', month)
-        df = df[df['Month'] == str(month)]
+        df = df[df['Month'] == str(month).zfill(2)]
         
     if not isinstance(day,type(None)):
         print('day:', day)
-        df = df[df['Day'] == str(day)]
+        df = df[df['Day'] == str(day).zfill(2)]
         
     df = df.reset_index(drop=True)
     
