@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import pathlib
 from skimage import transform as tf
+import math
 
 import hipp
 
@@ -332,8 +333,9 @@ def preprocess_with_fiducial_proxies(image_directory,
                                     verbose=verbose)
     
     if isinstance(square_dim, type(None)):
-        if isinstance(missing_proxy, type(None)):
-            square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+        minimum = (np.nanmin(distances))/2 #could be NaN
+        if not math.isnan(minimum) and missing_proxy is None:
+            square_dim = int(round(minimum))*2 # ensure half is non float for array index slicing
         else:
             # get image dimensions and subtract principal points to get minimal viable cropping distance,
             # given entirely missing side (and fiducial proxy) for image set.
