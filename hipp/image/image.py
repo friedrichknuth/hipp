@@ -49,9 +49,9 @@ def clahe_equalize_image(img_gray,
 
 def crop_about_point(image_array,
                      point_yx,
-                     square_dim = 11250):
+                     image_square_dim = 11250):
     
-    distance_from_point = int(round(square_dim/2)) # ensure half is non float for array index slicing
+    distance_from_point = int(round(image_square_dim/2)) # ensure half is non float for array index slicing
     x_L = point_yx[1]-distance_from_point
     x_R = point_yx[1]+distance_from_point
     y_T = point_yx[0]-distance_from_point
