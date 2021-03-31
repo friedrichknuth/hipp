@@ -249,7 +249,7 @@ def crop_fiducial(image_file,
     return output_file_name
 
 def crop_image_from_file(image_file_principal_point_tuple,
-                         square_dim,
+                         image_square_dim,
                          output_directory = 'input_data/cropped_images',
                          buffer_distance = 250):
     
@@ -261,9 +261,9 @@ def crop_image_from_file(image_file_principal_point_tuple,
     
     image_array = hipp.image.crop_about_point(image_array,
                                               principal_point,
-                                              square_dim = square_dim)
+                                              image_square_dim = image_square_dim)
     
-    image_array = hipp.image.clahe_equalize_image(image_array)
+#     image_array = hipp.image.clahe_equalize_image(image_array)
     
     path, basename, extension = hipp.io.split_file(image_file)
     out = os.path.join(output_directory,basename+extension)
@@ -510,7 +510,7 @@ def eval_matches(df,
     
 def iter_crop_image_from_file(images,
                               principal_points,
-                              square_dim,
+                              image_square_dim,
                               output_directory = 'input_data/cropped_images',
                               buffer_distance = 250,
                               verbose=True):
@@ -524,7 +524,7 @@ def iter_crop_image_from_file(images,
     
     future = {pool.submit(hipp.core.crop_image_from_file,
                           img_pp,
-                          square_dim,
+                          image_square_dim,
                           buffer_distance=buffer_distance,
                           output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
     results=[]

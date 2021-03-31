@@ -15,7 +15,7 @@ def image_restitution(df_detected,
                       transform_coords = True,
                       transform_image = True,
                       crop_image = True,
-                      square_dim = 10800,
+                      image_square_dim = 10800,
                       interpolation_order = 3,
                       output_directory = 'input_data/preprocessed_images/',
                       qc = True):
@@ -164,7 +164,7 @@ def image_restitution(df_detected,
             principal_point = np.array([int(round(x)) for x in principal_point])
             image_array = hipp.image.crop_about_point(image_array,
                                                       principal_point[::-1], # requires y,x order
-                                                      square_dim = square_dim)
+                                                      image_square_dim = image_square_dim)
             path, basename, extension = hipp.io.split_file(image_file)
             out = os.path.join(output_directory,basename+extension)
             cv2.imwrite(out,image_array)
@@ -278,7 +278,8 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
 def preprocess_with_fiducial_proxies(image_directory,
                                      template_directory,
                                      buffer_distance=250,
-                                     square_dim = None,
+                                     threshold_px = 50,
+                                     image_square_dim = None,
                                      output_directory = 'input_data/cropped_images',
                                      verbose=True,
                                      missing_proxy=None,
@@ -307,6 +308,7 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                          verbose         = verbose)
 
     proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
+                                                               threshold_px = threshold_px,
                                                                missing_proxy = missing_proxy)
 
     principal_points, distances, intersection_angles = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
@@ -331,9 +333,9 @@ def preprocess_with_fiducial_proxies(image_directory,
                                     output_directory = qc_plots_output_directory,
                                     verbose=verbose)
     
-    if isinstance(square_dim, type(None)):
+    if isinstance(image_square_dim, type(None)):
         if isinstance(missing_proxy, type(None)):
-            square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+            image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
         else:
             # get image dimensions and subtract principal points to get minimal viable cropping distance,
             # given entirely missing side (and fiducial proxy) for image set.
@@ -342,17 +344,17 @@ def preprocess_with_fiducial_proxies(image_directory,
             a = int(round((y - df_tmp.iloc[:,0]).min()))
             b = int(round((x - df_tmp.iloc[:,1]).min()))
             if a > b:
-                square_dim = b*2
+                image_square_dim = b*2
             else:
-                square_dim = a*2
-    print("Cropping images to square with dimensions", str(square_dim))
+                image_square_dim = a*2
+    print("Cropping images to square with dimensions", str(image_square_dim))
 
     hipp.core.iter_crop_image_from_file(images,
                                         principal_points,
-                                        square_dim,
+                                        image_square_dim,
                                         output_directory = output_directory,
                                         buffer_distance  = buffer_distance,
                                         verbose = verbose)
-    return square_dim
+    return image_square_dim
                                         
                                         
