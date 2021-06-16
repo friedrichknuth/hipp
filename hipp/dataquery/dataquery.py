@@ -290,7 +290,7 @@ def EE_stageForDownload(apiKey,
     calibrationReports = []
 
     for product in downloadOptions:
-        if product['available'] == "Y":
+        if product['available'] == True:
             if product['productName'] =='High Resolution Product':
                 downloads.append({'entityId' : product['entityId'],
                                   'productId' : product['id']})
@@ -300,9 +300,14 @@ def EE_stageForDownload(apiKey,
                                            'productId' : product['id']})
     print('Reqested images:', len(entityIds))
     print('Available images:',len(entityIds_available))
+    if len(entityIds_available) == 0:
+        print('No images available for downland.')
+        sys.exit()
     diff = (list(list(set(entityIds)-set(entityIds_available)) + list(set(entityIds_available)-set(entityIds))))
     if len(diff) > 0:
-        print('Unavailable images:', *diff )
+        print('Unavailable images:')
+        for i in [*diff]:
+            print(i)
     
     # only download calibration report once.
     cal = list({v['productId']:v for v in calibrationReports}.values())
@@ -325,34 +330,35 @@ def EE_stageForDownload(apiKey,
     urls      = []
 
     # handle previously requested files under different label
-    previouslyRequested_DownloadIds = list(requestResults['duplicateProducts'].keys())
-    previouslyRequested_labels      = list(set(list(requestResults['duplicateProducts'].values())))
-    if len(previouslyRequested_DownloadIds) > 0:
-        print('\nRetrieving', 
-              len(previouslyRequested_DownloadIds), 
-              'previously requested files in API locations:',
-              *previouslyRequested_labels)
-        for previousLabel in previouslyRequested_labels:
-            downloadRetrieveParameters = {'label' : previousLabel}
-            moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                             downloadRetrieveParameters, apiKey)
-            for downloadId in previouslyRequested_DownloadIds:
-                for i in moreDownloadUrls['available']:
-                    if int(i['downloadId']) == int(downloadId):
-                        if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
-                            fileNames.append(i['entityId']+'_calibration_report.pdf')
-                            urls.append(i['url'])
-                        elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
-                            fileNames.append(i['entityId']+'.tif.gz')
-                            urls.append(i['url'])
-        print('Retrieved', len(fileNames), 'previously requested files in API locations:', *previouslyRequested_labels)
-        if len(fileNames) !=  len(previouslyRequested_DownloadIds):
-                print('Unable to find:',
-                       len(previouslyRequested_DownloadIds) - len(fileNames),
-                       'files. API says they should be in:',
-                       *previouslyRequested_labels,
-                       '¯\_(ツ)_/¯') 
-                #This issue is under investigation with the helpdesk... awaiting response.          
+    if requestResults['duplicateProducts']:
+        previouslyRequested_DownloadIds = list(requestResults['duplicateProducts'].keys())
+        previouslyRequested_labels      = list(set(list(requestResults['duplicateProducts'].values())))
+        if len(previouslyRequested_DownloadIds) > 0:
+            print('\nRetrieving', 
+                  len(previouslyRequested_DownloadIds), 
+                  'previously requested files in API locations:',
+                  *previouslyRequested_labels)
+            for previousLabel in previouslyRequested_labels:
+                downloadRetrieveParameters = {'label' : previousLabel}
+                moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
+                                                                 downloadRetrieveParameters, apiKey)
+                for downloadId in previouslyRequested_DownloadIds:
+                    for i in moreDownloadUrls['available']:
+                        if int(i['downloadId']) == int(downloadId):
+                            if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
+                                fileNames.append(i['entityId']+'_calibration_report.pdf')
+                                urls.append(i['url'])
+                            elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
+                                fileNames.append(i['entityId']+'.tif.gz')
+                                urls.append(i['url'])
+            print('Retrieved', len(fileNames), 'previously requested files in API locations:', *previouslyRequested_labels)
+            if len(fileNames) !=  len(previouslyRequested_DownloadIds):
+                    print('Unable to find:',
+                           len(previouslyRequested_DownloadIds) - len(fileNames),
+                           'files. API says they should be in:',
+                           *previouslyRequested_labels,
+                           '¯\_(ツ)_/¯') 
+                    #This issue is under investigation with the helpdesk... awaiting response.          
 
     # check for requests sent to new label
     downloadRetrieveParameters = {'label' : label}
@@ -373,11 +379,11 @@ def EE_stageForDownload(apiKey,
 
 
     for i in moreDownloadUrls['available']:
-        if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
+        if i['productName'] == 'Camera Calibration File':
             fileNames.append(i['entityId']+'_calibration_report.pdf')
             urls.append(i['url'])
 
-        elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
+        elif i['productName'] == 'High Resolution Product':
             fileNames.append(i['entityId']+'.tif.gz')
             urls.append(i['url'])
             
