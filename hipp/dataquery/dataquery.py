@@ -78,7 +78,7 @@ def EE_downloadImages(apiKey,
                                     file_names)
                                     
     hipp.io.gunzip_dir(output_directory)
-    hipp.utils.optimize_geotifs(output_directory)
+#     hipp.utils.optimize_geotifs(output_directory)
     
     images_directory              = os.path.join(output_directory, images_directory_suffix)
     calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
@@ -395,7 +395,9 @@ def EE_stageForDownload(apiKey,
             if any(i in s for s in fileNames):
                 pass
             else:
-                print('Unable to find:', i, 'in', *previouslyRequested_labels)
+                print('Unable to find:', i)
+                pass
+#                 print('Unable to find:', i, 'in', *previouslyRequested_labels)
 
     return urls, fileNames
 
