@@ -262,8 +262,9 @@ def crop_image_from_file(image_file_principal_point_tuple,
     image_array = hipp.image.crop_about_point(image_array,
                                               principal_point,
                                               image_square_dim = image_square_dim)
-    
-#     image_array = hipp.image.clahe_equalize_image(image_array)
+
+    image_array = hipp.image.clahe_equalize_image(image_array)
+    image_array = hipp.image.img_linear_stretch(img_gray)
     
     path, basename, extension = hipp.io.split_file(image_file)
     out = os.path.join(output_directory,basename+extension)
