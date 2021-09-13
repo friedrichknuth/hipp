@@ -48,6 +48,7 @@ def image_restitution(df_detected,
     midside_angle_diff_after_tform = []
     corner_angle_diff_before_tform = []
     corner_angle_diff_after_tform = []
+    pixel_pitches = []
     qc_dataframes = []
     
     # convert true coordinates to image reference system
@@ -131,11 +132,18 @@ def image_restitution(df_detected,
 
             # ensure at least 3 points are available to compute transform
             if len(fid_coord_tmp) >=3 and ~np.isnan(fid_coord_true_tmp).all():
+
                 tform = tf.AffineTransform()
                 tform.estimate(fid_coord_tmp, fid_coord_true_tmp)
 
                 fiducial_coordinates_tform = tform(fiducial_coordinates)
                 principal_point = tform(principal_point)[0]
+                
+                pixel_pitch_x_tmp = np.round(tform.scale[1],4)
+                pixel_pitch_y_tmp = np.round(tform.scale[0],4)
+                pixel_pitch_tmp = (pixel_pitch_x_tmp*scanning_resolution_mm,
+                                   pixel_pitch_y_tmp*scanning_resolution_mm)
+                pixel_pitches.append(pixel_pitch_tmp)
 
                 if transform_image:
                     # compute inverse transformation matrix
@@ -212,6 +220,9 @@ def image_restitution(df_detected,
         qc_dataframes.append(pd.DataFrame(corner_angle_diff_before_tform,
                                           columns=['corner_angle_diff_before_tform']))
         if transform_coords:
+            qc_dataframes.append(pd.DataFrame(pixel_pitches,
+                                              columns=['pixel_pitch_after_tform_x',
+                                                      'pixel_pitch_after_tform_y']))
             qc_dataframes.append(pd.DataFrame(coordinates_rmse_after_tform,
                                               columns=['coordinates_rmse_after_tform']))
             qc_dataframes.append(pd.DataFrame(coordinates_pp_dist_rmse_after_tform,
@@ -256,6 +267,7 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
         if midside_fiducials:
             windows = hipp.core.define_midside_windows(image_array)
         elif corner_fiducials:
+            
             windows = hipp.core.define_corner_windows(image_array)
         else:
             print("Please specify midside or corner fiducials and provide corresponding templates.")
