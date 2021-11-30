@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 import numpy as np
 
 import hipp
@@ -14,18 +15,26 @@ def compute_coordinate_rmse(coordinates, coordinates_true):
         rmse = np.sqrt(np.nanmean((coordinates - coordinates_true)**2))
     return rmse
 
-def compute_coordinate_distance_diff_rmse(midside_coordinates, 
-                                          midside_coordinates_true,
-                                          corner_coordinates,
-                                          corner_coordinates_true):
-                                          
-    dist_midside      = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates)
-    dist_midside_true = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates_true)
-    dist_corner       = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates)
-    dist_corner_true  = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates_true)
-    dist = np.append(dist_midside, dist_corner)
-    dist_true = np.append(dist_midside_true, dist_corner_true)
+def compute_coordinate_distance_diff_rmse(midside_coordinates=None, 
+                                          midside_coordinates_true=None,
+                                          corner_coordinates=None,
+                                          corner_coordinates_true=None):
     
+    if isinstance(midside_coordinates, Iterable) and isinstance(corner_coordinates, Iterable):
+        dist_midside      = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates)
+        dist_midside_true = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates_true)
+        dist_corner       = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates)
+        dist_corner_true  = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates_true)
+        dist = np.append(dist_midside, dist_corner)
+        dist_true = np.append(dist_midside_true, dist_corner_true)
+    elif isinstance(midside_coordinates, Iterable) and not isinstance(corner_coordinates, Iterable):
+        dist      = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates)
+        dist_true = hipp.qc.compute_opposing_fiducial_distances(midside_coordinates_true)
+        
+    elif not isinstance(midside_coordinates, Iterable) and isinstance(corner_coordinates, Iterable):
+        dist       = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates)
+        dist_true  = hipp.qc.compute_opposing_fiducial_distances(corner_coordinates_true)
+
     if np.isnan(dist).all() or np.isnan(dist_true).all():
         return np.nan
     else:

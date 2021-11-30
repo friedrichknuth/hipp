@@ -1,5 +1,7 @@
 # Historical Image Pre-Processing
-Library to pre-process scanned historical images for Structure from Motion (SfM) surface reconstruction and photogrammatric analysis. 
+Library to pre-process scanned historical images for Structure from Motion (SfM) surface reconstruction and photogrammetric analysis. 
+[![DOI](https://zenodo.org/badge/287390486.svg)](https://zenodo.org/badge/latestdoi/287390486)
+
 
 ### Features
 

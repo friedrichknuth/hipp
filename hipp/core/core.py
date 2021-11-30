@@ -249,7 +249,7 @@ def crop_fiducial(image_file,
     return output_file_name
 
 def crop_image_from_file(image_file_principal_point_tuple,
-                         square_dim,
+                         image_square_dim,
                          output_directory = 'input_data/cropped_images',
                          buffer_distance = 250):
     
@@ -261,16 +261,21 @@ def crop_image_from_file(image_file_principal_point_tuple,
     
     image_array = hipp.image.crop_about_point(image_array,
                                               principal_point,
-                                              square_dim = square_dim)
-    
+                                              image_square_dim = image_square_dim)
+
     image_array = hipp.image.clahe_equalize_image(image_array)
+    image_array = hipp.image.img_linear_stretch(image_array)
     
     path, basename, extension = hipp.io.split_file(image_file)
     out = os.path.join(output_directory,basename+extension)
     cv2.imwrite(out,image_array)
     return out
 
-def define_midside_windows(image_array):
+def define_midside_windows(image_array,
+                           reduce_left_window_by_fraction   = 0,
+                           reduce_top_window_by_fraction    = 0,
+                           reduce_right_window_by_fraction  = 0,
+                           reduce_bottom_window_by_fraction = 0):
     
     half_image_height     = int(image_array.shape[0] / 2)
     quarter_image_height  = int(half_image_height / 2)
@@ -278,26 +283,32 @@ def define_midside_windows(image_array):
     half_image_width     = int(image_array.shape[1] / 2)
     quarter_image_width  = int(half_image_width / 2)
     
-    midside_left    = [quarter_image_height,
-                      half_image_height + quarter_image_height,
+    midside_left    = [int(quarter_image_height + quarter_image_height*reduce_left_window_by_fraction),
+                      int(half_image_height + quarter_image_height-quarter_image_height*reduce_left_window_by_fraction),
                       0, 
-                      quarter_image_width]
+                      int(quarter_image_width - quarter_image_width*reduce_left_window_by_fraction)]
 
     midside_top     = [0,
-                      quarter_image_height,
-                      quarter_image_width,
-                      half_image_width + quarter_image_width]
+                      int(quarter_image_height - quarter_image_height*reduce_top_window_by_fraction),
+                      int(quarter_image_width + quarter_image_width*reduce_top_window_by_fraction),
+                      int(half_image_width + quarter_image_width-quarter_image_width*reduce_top_window_by_fraction)]
 
-    midside_right   = [quarter_image_height,
-                      half_image_height + quarter_image_height,
-                      half_image_width + quarter_image_width,
+    midside_right   = [int(quarter_image_height+ quarter_image_height*reduce_right_window_by_fraction),
+                      int(half_image_height + quarter_image_height-quarter_image_height*reduce_right_window_by_fraction),
+                      half_image_width + quarter_image_width + \
+                           int(quarter_image_width*reduce_right_window_by_fraction),
                       image_array.shape[1]]
 
-
-    midside_bottom  = [half_image_height + quarter_image_height,
+    midside_bottom  = [half_image_height + quarter_image_height + \
+                           int(quarter_image_height*reduce_bottom_window_by_fraction),
                       image_array.shape[0],
-                      quarter_image_width,
-                      half_image_width + quarter_image_width]
+                      int(quarter_image_width+ quarter_image_width*reduce_bottom_window_by_fraction),
+                      int(half_image_width + quarter_image_width - + quarter_image_width*reduce_bottom_window_by_fraction)]
+    
+#     midside_left = [5900, 6500,0, 1500]
+#     midside_top = [0, 500,6300, 7700]
+#     midside_right = [5900, 6500, 12800, 13251]
+#     midside_bottom = [11900, 12432,6400, 7700]
                      
     midside_windows = [midside_left, midside_top, midside_right, midside_bottom]
     
@@ -510,7 +521,7 @@ def eval_matches(df,
     
 def iter_crop_image_from_file(images,
                               principal_points,
-                              square_dim,
+                              image_square_dim,
                               output_directory = 'input_data/cropped_images',
                               buffer_distance = 250,
                               verbose=True):
@@ -524,7 +535,7 @@ def iter_crop_image_from_file(images,
     
     future = {pool.submit(hipp.core.crop_image_from_file,
                           img_pp,
-                          square_dim,
+                          image_square_dim,
                           buffer_distance=buffer_distance,
                           output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
     results=[]
@@ -582,6 +593,9 @@ def load_midside_fiducial_proxy_templates(template_directory):
 def match_template(image_array,
                    template_array):
     
+#     image_array = np.where(image_array>200,image_array,0)
+#     template_array = np.where(template_array>200,template_array,0)
+    
     result = cv2.matchTemplate(image_array,template_array,cv2.TM_CCOEFF_NORMED)
     location = np.where(result==result.max())
     
@@ -590,8 +604,8 @@ def match_template(image_array,
     
     return match_location, quality_score
     
-def merge_midside_df_corner_df(df_corner, 
-                               df_midside,
+def merge_midside_df_corner_df(df_corner=None, 
+                               df_midside=None,
                                file_name_column = 'fileName'):
     
     if isinstance(df_midside, Iterable) and isinstance(df_corner, Iterable):
@@ -605,37 +619,13 @@ def merge_midside_df_corner_df(df_corner,
         df_detected = hipp.core.split_position_tuples(df_detected)
         return df_detected
         
-    elif not isinstance(df_midside, Iterable) and isinstance(df_corner, Iterable):
-        columns = [file_name_column, 
-                   'midside_left_y', 
-                   'midside_left_x', 
-                   'midside_top_y',
-                   'midside_top_x', 
-                   'midside_right_y', 
-                   'midside_right_x',
-                   'midside_bottom_y', 
-                   'midside_bottom_x']
-        df_corner = hipp.core.split_position_tuples(df_corner)
-        df_midside = pd.DataFrame(index=df_corner.index,columns=columns)
-        df_midside[file_name_column] = df_corner[file_name_column]
-        df_detected = pd.merge(df_midside, df_corner, on=file_name_column)
-        return df_detected
-    
-    elif not isinstance(df_corner, Iterable) and isinstance(df_midside, Iterable):
-        columns = [file_name_column,
-                   'corner_top_left_y',
-                   'corner_top_left_x', 
-                   'corner_top_right_y', 
-                   'corner_top_right_x',
-                   'corner_bottom_right_y', 
-                   'corner_bottom_right_x',
-                   'corner_bottom_left_y', 
-                   'corner_bottom_left_x']
+    elif isinstance(df_midside, Iterable) and not isinstance(df_corner, Iterable):
         df_midside = hipp.core.split_position_tuples(df_midside)
-        df_corner = pd.DataFrame(index=df_midside.index,columns=columns)
-        df_corner[file_name_column] = df_midside[file_name_column]
-        df_detected = pd.merge(df_midside, df_corner, on=file_name_column)
-        return df_detected
+        return df_midside
+    
+    elif isinstance(df_corner, Iterable) and not isinstance(df_midside, Iterable):
+        df_corner = hipp.core.split_position_tuples(df_corner)
+        return df_corner
 
 def nan_low_scoring_fiducial_matches(df,threshold=0.01):
     """
