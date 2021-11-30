@@ -300,7 +300,7 @@ def _EE_stageForDownload(apiKey,
                 print("NAME: " + download['entityId'])
                 ee_requests.append(download)
                 
-            # Didn't get all of the reuested downloads, call the download-retrieve method again probably after 30 seconds
+            # Didn't get all of the requested downloads, call the download-retrieve method again probably after 30 seconds
             while len(downloadIds) < requestedDownloadsCount: 
                 preparingDownloads = requestedDownloadsCount - len(downloadIds)
                 print("\n", preparingDownloads, "downloads are not available. Waiting for 30 seconds.\n")
