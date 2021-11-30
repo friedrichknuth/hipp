@@ -33,7 +33,7 @@ def _download_image(output_directory,
     urllib.request.urlretrieve(url,output_file)
     return output_file
 
-def thread_downloads(output_directory, urls, file_names, max_workers=5):
+def _thread_downloads(output_directory, urls, file_names, max_workers=5):
     
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
     future_to_url = {pool.submit(_download_image,
@@ -45,36 +45,21 @@ def thread_downloads(output_directory, urls, file_names, max_workers=5):
         results.append(r)
         print('Download complete for:',r)
 
-## EARTH EXPLORER
-## Using camel case to keep with API convention, where relevant, to help with debugging.
-
-def EE_checkCompleted(entityIds,
-                      output_directory):
-    completed = sorted(glob.glob(os.path.join(output_directory,'*')))
+def EE_download_images_to_disk(
+    apiKey,
+    entityIds,
+    label                                = 'test_download',
+    output_directory                     = 'input_data',
+    images_directory_suffix              = 'raw_images',
+    calibration_reports_directory_suffix = 'calibration_reports'
+):
     
-    diff = []
-    for i in entityIds:
-        if any(i in s for s in completed):
-            pass
-        else:
-            diff.append(i)
-    return diff
-
-def EE_downloadImages(apiKey,
-                      entityIds,
-                      label                                = 'test_download',
-                      output_directory                     = 'input_data',
-                      images_directory_suffix              = 'raw_images',
-                      calibration_reports_directory_suffix = 'calibration_reports'):
-    
-    urls, file_names = _EE_stageForDownload(apiKey,
-                                                          entityIds,
-                                                          label = label)
+    urls, file_names = _EE_stageForDownload(apiKey, entityIds, label = label)
     #one possible download mode - has file names...                                                          
     if file_names:                                                        
         pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
         
-        hipp.dataquery.thread_downloads(output_directory, 
+        _thread_downloads(output_directory, 
                                         urls, 
                                         file_names)
                                         
@@ -95,104 +80,78 @@ def EE_downloadImages(apiKey,
     else:
         return None, None
     
-def EE_filterSceneRecords(scenes):
+def _EE_convert_api_responses_to_dataframe(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
-    entityIds = []
-    agencies = []
-    projects = []
-    rolls = []
-    frames = []
-    recordingTechniques = []
-    acquisitionDates = []
-    hi_res_Available = []
-    imageTypes = []
-    qualities = []
-    altitudesFeet = []
-    imageIds = []
-    focalLengths = []
-    centerLats = []
-    centerLons = []
-    NWlats = []
-    NWlons = []
-    NElats = []
-    NElons = []
-    SElats = []
-    SElons = []
-    SWlats = []
-    SWlons = []
+    # dictionary relating the field names used by the EE API
+    # to the HIPP/HSFM preferred column names
+    api_to_hsfm_field_name_dict = {
+        'Entity  ID':                       'entityId',
+        'Agency':                           'agency',
+        'Project':                          'project',
+        'Roll':                             'roll',
+        'Frame':                            'frame',
+        'Recording Technique':              'recordingTechnique',
+        'Acquisition Date':                 'acquisitionDate',
+        'High Resolution Download Avail':   'hi_res_available',
+        'Image Type':                       'imageType',
+        'Quality':                          'quality',
+        'Flying Height in Feet':            'altitudesFeet',
+        'Photo ID':                         'imageId',
+        'Focal Length':                     'focalLength',
+        'Center Latitude dec':              'centerLat',
+        'Center Longitude dec':             'centerLon',
+        'NW Corner Lat dec':                'NWlat',
+        'NW Corner Long dec':               'NWlon',
+        'NE Corner Lat dec':                'NElat',
+        'NE Corner Long dec':               'NElon',
+        'SE Corner Lat dec':                'SElat',
+        'SE Corner Long dec':               'SElon',
+        'SW Corner Lat dec':                'SWlat',
+        'SW Corner Long dec':               'SWlon',
+    }
+
+    #Iterate over api results creating a dataframe for each and appending into one dataframe
+    scenes_df = pd.DataFrame()
     for scene in scenes:
-        for entry in scene['metadata']:
-            if entry['fieldName'] == 'Entity  ID':
-                entityIds.append(entry['value'])
-            if entry['fieldName'] == 'Agency':
-                agencies.append(entry['value'])
-            if entry['fieldName'] == 'Project':
-                projects.append(entry['value'])
-            if entry['fieldName'] == 'Roll':
-                rolls.append(entry['value'])
-            if entry['fieldName'] == 'Frame':
-                frames.append(entry['value'])
-            if entry['fieldName'] == 'Recording Technique':
-                recordingTechniques.append(entry['value'])
-            if entry['fieldName'] == 'Acquisition Date':
-                acquisitionDates.append(entry['value'])
-            if entry['fieldName'] == 'High Resolution Download Avail':
-                hi_res_Available.append(entry['value'])
-            if entry['fieldName'] == 'Image Type':
-                imageTypes.append(entry['value'])
-            if entry['fieldName'] == 'Quality':
-                qualities.append(entry['value'])
-            if entry['fieldName'] == 'Flying Height in Feet':
-                altitudesFeet.append(float(entry['value']))
-            if entry['fieldName'] == 'Photo ID':
-                imageIds.append(entry['value'])
-            if entry['fieldName'] == 'Focal Length':
-                focalLengths.append(float(entry['value'].split(' ')[0]))
-            if entry['fieldName'] == 'Center Latitude dec':
-                centerLats.append(float(entry['value']))
-            if entry['fieldName'] == 'Center Longitude dec':
-                centerLons.append(float(entry['value']))
-            if entry['fieldName'] == 'NW Corner Lat dec':
-                NWlats.append(float(entry['value']))
-            if entry['fieldName'] == 'NW Corner Long dec':
-                NWlons.append(float(entry['value']))
-            if entry['fieldName'] == 'NE Corner Lat dec':
-                NElats.append(float(entry['value']))
-            if entry['fieldName'] == 'NE Corner Long dec':
-                NElons.append(float(entry['value']))
-            if entry['fieldName'] == 'SE Corner Lat dec':
-                SElats.append(float(entry['value']))
-            if entry['fieldName'] == 'SE Corner Long dec':
-                SElons.append(float(entry['value']))
-            if entry['fieldName'] == 'SW Corner Lat dec':
-                SWlats.append(float(entry['value']))
-            if entry['fieldName'] == 'SW Corner Long dec':
-                SWlons.append(float(entry['value']))
-    scenceDict = {'entityId'          : entityIds, 
-                  'agency'            : agencies,
-                  'project'           : projects,
-                  'roll'              : rolls,
-                  'frame'             : agencies,
-                  'recordingTechnique': recordingTechniques,
-                  'acquisitionDate'   : acquisitionDates,
-                  'hi_res_available'  : hi_res_Available,
-                  'imageType'         : imageTypes,
-                  'quality'           : qualities,
-                  'altitudesFeet'     : altitudesFeet,
-                  'imageId'           : imageIds,
-                  'focalLength'       : focalLengths,
-                  'centerLat'         : centerLats,
-                  'centerLon'         : centerLons,
-                  'NWlat'             : NWlats,
-                  'NWlon'             : NWlons,
-                  'NElat'             : NElats,
-                  'NElon'             : NElons,
-                  'SElat'             : SElats,
-                  'SElon'             : SElons,
-                  'SWlat'             : SWlats,
-                  'SWlon'             : SWlons}
-    df = pd.DataFrame(scenceDict)
-    return df
+        #This pandas work converts the tidy format of the API response to a column-organized dataframe
+        one_scene_df = pd.DataFrame(scene['metadata'])
+        one_scene_df = one_scene_df[one_scene_df.fieldName.isin(api_to_hsfm_field_name_dict.keys())]
+        one_scene_df = one_scene_df[['fieldName', 'value']].set_index(
+            'fieldName'
+            ).transpose().rename_axis(
+                None, 
+                axis = 1
+            ).reset_index(drop=True)
+        scenes_df = scenes_df.append(one_scene_df)
+
+    #Rename column names to the HIPP/HSFM preferred column names
+    scenes_df = scenes_df.rename(api_to_hsfm_field_name_dict, axis=1)
+    #Clean up the combined dataframe
+
+    #get rid of the mm part of the "focalLength" column and make it a float
+    scenes_df['focalLength'] = scenes_df['focalLength'].apply(lambda s: s.split(' ')[0])
+
+    #Make numeric columns type float
+    convert_dict = {
+        'altitudesFeet': float,
+        'focalLength': float,
+        'centerLat': float,
+        'centerLon': float,
+        'NWlat': float,
+        'NWlon': float,
+        'NElat': float,
+        'NElon': float,
+        'SElat': float,
+        'SElon': float,
+        'SWlat': float,
+        'SWlon': float
+    }
+    
+    scenes_df = scenes_df.astype(convert_dict)
+
+    scenes_df = scenes_df.reset_index(drop=True)
+
+    return scenes_df
     
 def EE_login(username,
              password,
@@ -206,7 +165,7 @@ def EE_login(username,
     
     return api_key
 
-def EE_sceneSearch(apiKey,
+def EE_pre_select_images(apiKey,
                    xmin,ymin,xmax,ymax,
                    startDate,endDate,
                    metadataType = 'full', #'summary', None
@@ -241,7 +200,8 @@ def EE_sceneSearch(apiKey,
         print("\nmaxResults set to:", maxResults, 
               '\nIncrease this parameter to obtain additional records. API max 50,000.')
     
-    return scenes['results']
+    results_df = EE_convert_api_responses_to_dataframe(scenes['results'])
+    return results_df
     
 def _EE_sendRequest(url, data, apiKey = None):  
     json_data = json.dumps(data)
@@ -285,7 +245,12 @@ def _EE_stageForDownload(apiKey,
                         serviceUrl   = 'https://m2m.cr.usgs.gov/api/api/json/stable/'):
     
     
-    """[summary]
+    """Stage downloads using the EarthExplorer api and a given list of entityIds
+
+    Products/requests are filtered such that only requests with "collectionName" equal to "Aerial Photo Single Frames"
+    and with "productName" that is equal to either "Camera Calibration File" or "High Resolution Product"
+
+    API request handling adapted from usgs example https://m2m.cr.usgs.gov/api/docs/example/download_data-py
 
     Returns:
         urls, filenames: tuple of urls and names for the files
@@ -397,7 +362,7 @@ def NAGAP_download_images_to_disk(image_metadata,
     df['urls'] = base_url + df[image_type_colum]
     urls, file_names = df['urls'], df[file_name_column]
     
-    hipp.dataquery.thread_downloads(output_directory, urls, file_names)
+    _thread_downloads(output_directory, urls, file_names)
     
     hipp.utils.optimize_geotifs(output_directory)
     
