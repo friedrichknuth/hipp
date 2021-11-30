@@ -200,7 +200,7 @@ def EE_pre_select_images(apiKey,
         print("\nmaxResults set to:", maxResults, 
               '\nIncrease this parameter to obtain additional records. API max 50,000.')
     
-    results_df = EE_convert_api_responses_to_dataframe(scenes['results'])
+    results_df = _EE_convert_api_responses_to_dataframe(scenes['results'])
     return results_df
     
 def _EE_sendRequest(url, data, apiKey = None):  
