@@ -36,7 +36,7 @@ def _download_image(output_directory,
 def thread_downloads(output_directory, urls, file_names, max_workers=5):
     
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    future_to_url = {pool.submit(hipp.dataquery._download_image,
+    future_to_url = {pool.submit(_download_image,
                                  output_directory,
                                  x): x for x in zip(urls, file_names)}
     results=[]
