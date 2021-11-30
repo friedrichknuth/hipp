@@ -21,7 +21,7 @@ Library query and download historical image data from public archives.
 
 ### GENERIC FUNCTIONS
 
-def download_image(output_directory, 
+def _download_image(output_directory, 
                    payload,
                    default_img_ext = '.tif'):
     url, file_name = payload
@@ -32,11 +32,11 @@ def download_image(output_directory,
         output_file = os.path.join(output_directory, base_name + ext)
     urllib.request.urlretrieve(url,output_file)
     return output_file
+
+def thread_downloads(output_directory, urls, file_names, max_workers=5):
     
-def thread_downloads(output_directory, urls, file_names):
-    
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-    future_to_url = {pool.submit(hipp.dataquery.download_image,
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    future_to_url = {pool.submit(hipp.dataquery._download_image,
                                  output_directory,
                                  x): x for x in zip(urls, file_names)}
     results=[]
@@ -67,29 +67,33 @@ def EE_downloadImages(apiKey,
                       images_directory_suffix              = 'raw_images',
                       calibration_reports_directory_suffix = 'calibration_reports'):
     
-    urls, file_names = hipp.dataquery.EE_stageForDownload(apiKey,
+    urls, file_names = _EE_stageForDownload(apiKey,
                                                           entityIds,
                                                           label = label)
-                                                         
-    pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+    #one possible download mode - has file names...                                                          
+    if file_names:                                                        
+        pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+        
+        hipp.dataquery.thread_downloads(output_directory, 
+                                        urls, 
+                                        file_names)
+                                        
+        hipp.io.gunzip_dir(output_directory)
+        hipp.utils.optimize_geotifs(output_directory)
+        
+        images_directory              = os.path.join(output_directory, images_directory_suffix)
+        calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
+        
+        hipp.io.move_files(output_directory, images_directory, '.tif')
+        hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
+        
+        print('Images in:', images_directory)
+        print('Calibration reports in:', calibration_reports_directory)
+        
+        return images_directory, calibration_reports_directory
     
-    hipp.dataquery.thread_downloads(output_directory, 
-                                    urls, 
-                                    file_names)
-                                    
-    hipp.io.gunzip_dir(output_directory)
-    hipp.utils.optimize_geotifs(output_directory)
-    
-    images_directory              = os.path.join(output_directory, images_directory_suffix)
-    calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
-    
-    hipp.io.move_files(output_directory, images_directory, '.tif')
-    hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
-    
-    print('Images in:', images_directory)
-    print('Calibration reports in:', calibration_reports_directory)
-    
-    return images_directory, calibration_reports_directory
+    else:
+        return None, None
     
 def EE_filterSceneRecords(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
@@ -198,7 +202,7 @@ def EE_login(username,
             'password' : password}
     
     url = m2mhost + 'login'
-    api_key = hipp.dataquery.EE_sendRequest(url, data)
+    api_key = _EE_sendRequest(url, data)
     
     return api_key
 
@@ -231,7 +235,7 @@ def EE_sceneSearch(apiKey,
                                'sceneFilter' : {'spatialFilter'     : spatialFilter,
                                                 'acquisitionFilter' : acquisitionFilter},
                                'metadataType': metadataType}
-    scenes = hipp.dataquery.EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
+    scenes = _EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
     print('\nRecords returned:', scenes['recordsReturned'])
     if scenes['recordsReturned'] == maxResults:
         print("\nmaxResults set to:", maxResults, 
@@ -239,7 +243,7 @@ def EE_sceneSearch(apiKey,
     
     return scenes['results']
     
-def EE_sendRequest(url, data, apiKey = None):  
+def _EE_sendRequest(url, data, apiKey = None):  
     json_data = json.dumps(data)
     
     if apiKey == None:
@@ -274,125 +278,103 @@ def EE_sendRequest(url, data, apiKey = None):
     
     return output['data']
 
-def EE_stageForDownload(apiKey,
+def _EE_stageForDownload(apiKey,
                         entityIds,
                         label        = 'test_download',
                         datasetName  = 'aerial_combin',
                         serviceUrl   = 'https://m2m.cr.usgs.gov/api/api/json/stable/'):
     
-    # check what is available and get productIDs
-    downloadOptionsParameters = {'datasetName' : datasetName,
-                                 'entityIds' : entityIds}
-    downloadOptions = hipp.dataquery.EE_sendRequest(serviceUrl + "download-options", 
-                                                    downloadOptionsParameters, apiKey)
-    entityIds_available = []
+    
+    """[summary]
+
+    Returns:
+        urls, filenames: tuple of urls and names for the files
+    """
+    ee_requests = []
+    # download datasets
+    
+    payload = {'datasetName' : datasetName, 'entityIds' : entityIds}
+                        
+    downloadOptions = _EE_sendRequest(serviceUrl + "download-options", payload, apiKey)
+
+    # Aggregate a list of available products
     downloads = []
-    calibrationReports = []
-
     for product in downloadOptions:
-        if product['available'] == "Y":
-            if product['productName'] =='High Resolution Product':
-                downloads.append({'entityId' : product['entityId'],
-                                  'productId' : product['id']})
-                entityIds_available.append(product['entityId'])
-            if product['productName'] =='Camera Calibration File':
-                calibrationReports.append({'entityId' : product['entityId'],
-                                           'productId' : product['id']})
-    print('Reqested images:', len(entityIds))
-    print('Available images:',len(entityIds_available))
-    diff = (list(list(set(entityIds)-set(entityIds_available)) + list(set(entityIds_available)-set(entityIds))))
-    if len(diff) > 0:
-        print('Unavailable images:', *diff )
-    
-    # only download calibration report once.
-    cal = list({v['productId']:v for v in calibrationReports}.values())
-    if len(cal) > 0:
-        print('Corresponding Calibration reports:', len(cal))
-        downloads.extend(cal)
-        
-    print('Total files being requested:', len(entityIds)+len(cal))
-    
-    # request for staging
-    downloadRequestParameters = {'downloads' : downloads,
-                                 'label' : label}
-    
-    print('\nSending request to stage files for download in API location:', label)
-    # TODO add spinner
-    requestResults = hipp.dataquery.EE_sendRequest(serviceUrl + "download-request",
-                                                   downloadRequestParameters, apiKey)
-    
-    fileNames = []
-    urls      = []
-
-    # handle previously requested files under different label
-    previouslyRequested_DownloadIds = list(requestResults['duplicateProducts'].keys())
-    previouslyRequested_labels      = list(set(list(requestResults['duplicateProducts'].values())))
-    if len(previouslyRequested_DownloadIds) > 0:
-        print('\nRetrieving', 
-              len(previouslyRequested_DownloadIds), 
-              'previously requested files in API locations:',
-              *previouslyRequested_labels)
-        for previousLabel in previouslyRequested_labels:
-            downloadRetrieveParameters = {'label' : previousLabel}
-            moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                             downloadRetrieveParameters, apiKey)
-            for downloadId in previouslyRequested_DownloadIds:
-                for i in moreDownloadUrls['available']:
-                    if int(i['downloadId']) == int(downloadId):
-                        if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
-                            fileNames.append(i['entityId']+'_calibration_report.pdf')
-                            urls.append(i['url'])
-                        elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
-                            fileNames.append(i['entityId']+'.tif.gz')
-                            urls.append(i['url'])
-        print('Retrieved', len(fileNames), 'previously requested files in API locations:', *previouslyRequested_labels)
-        if len(fileNames) !=  len(previouslyRequested_DownloadIds):
-                print('Unable to find:',
-                       len(previouslyRequested_DownloadIds) - len(fileNames),
-                       'files. API says they should be in:',
-                       *previouslyRequested_labels,
-                       '¯\_(ツ)_/¯') 
-                #This issue is under investigation with the helpdesk... awaiting response.          
-
-    # check for requests sent to new label
-    downloadRetrieveParameters = {'label' : label}
-    moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                     downloadRetrieveParameters, apiKey)
-                                                     
-    print('\n')
-    if int(moreDownloadUrls['queueSize']) != 0:
-        print('Staging',len(moreDownloadUrls['available']), 'new requests in API location:', label)
-    while int(moreDownloadUrls['queueSize']) != 0:
-        moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                         downloadRetrieveParameters, apiKey)
-        # TODO if this takes to long should start thread to download available and pop from list
-        if int(moreDownloadUrls['queueSize']) != 0:
-            print('New requests in queue:', moreDownloadUrls['queueSize'])
-            print('Retry in 30 seconds. Proceeding when queue = 0')
-            time.sleep(30)
-
-
-    for i in moreDownloadUrls['available']:
-        if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
-            fileNames.append(i['entityId']+'_calibration_report.pdf')
-            urls.append(i['url'])
-
-        elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
-            fileNames.append(i['entityId']+'.tif.gz')
-            urls.append(i['url'])
+            # Make sure the product is available for this scene
+            if product['available'] == True:
+                    downloads.append({'entityId' : product['entityId'],
+                                    'productId' : product['id']})
+                    
+    # Did we find products?
+    if downloads:
+        requestedDownloadsCount = len(downloads)
+        # set a label for the download request
+        label = "download-sample"
+        payload = {'downloads' : downloads,
+                                        'label' : label}
+        # Call the download to get the direct download urls
+        requestResults = _EE_sendRequest(serviceUrl + "download-request", payload, apiKey)          
+                        
+        # PreparingDownloads has a valid link that can be used but data may not be immediately available
+        # Call the download-retrieve method to get download that is available for immediate download
+        if requestResults['preparingDownloads'] != None and len(requestResults['preparingDownloads']) > 0:
+            payload = {'label' : label}
+            moreDownloadUrls = _EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
             
-    print('\nAvailable and ready for download:', len(fileNames))
+            downloadIds = []  
+            
+            for download in moreDownloadUrls['available']:
+                downloadIds.append(download['downloadId'])
+                print("DOWNLOAD: " + download['url'])
+                print("NAME: " + download['entityId'])
+                ee_requests.append(download)
+                
+            for download in moreDownloadUrls['requested']:   
+                downloadIds.append(download['downloadId'])
+                print("DOWNLOAD: " + download['url'])
+                print("NAME: " + download['entityId'])
+                ee_requests.append(download)
+                
+            # Didn't get all of the reuested downloads, call the download-retrieve method again probably after 30 seconds
+            while len(downloadIds) < requestedDownloadsCount: 
+                preparingDownloads = requestedDownloadsCount - len(downloadIds)
+                print("\n", preparingDownloads, "downloads are not available. Waiting for 30 seconds.\n")
+                time.sleep(30)
+                print("Trying to retrieve data\n")
+                moreDownloadUrls = _EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
+                for download in moreDownloadUrls['available']:                            
+                    if download['downloadId'] not in downloadIds:
+                        downloadIds.append(download['downloadId'])
+                        print("DOWNLOAD: " + download['url'])
+                        print("NAME: " + download['entityId'])
+                        ee_requests.append(download)
+                    
+        else:
+            # Get all available downloads
+            for download in requestResults['availableDownloads']:
+                # TODO :: Implement a downloading routine
+                print("DOWNLOAD: " + download['url'])
+                print("NAME: " + download['entityId'])
+                ee_requests.append(download)
+        print("\nAll downloads are available to download.\n")
+
+        # Download images
+    filtered_reqs = [
+        rq for rq in ee_requests
+        if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product']
+    ]
+
+    urls = []
+    filenames = []
+    for req in filtered_reqs:
+        if req['productName'] =='Camera Calibration File':
+            name = req['entityId'] + '.pdf'
+        else:
+            name = req['entityId'] + '.tif.gz'
+        urls.append(req['url'])
+        filenames.append(name)
     
-    if len(fileNames) != len(entityIds)+len(cal):
-        print('\nWARNING: Missing files:',(len(entityIds)+len(cal)) - len(fileNames))
-        for i in entityIds:
-            if any(i in s for s in fileNames):
-                pass
-            else:
-                print('Unable to find:', i, 'in', *previouslyRequested_labels)
-
-    return urls, fileNames
-
+    return urls, filenames
 
 ## ARCTICDATA.IO
 
