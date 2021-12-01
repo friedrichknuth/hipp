@@ -290,14 +290,10 @@ def _EE_stageForDownload(apiKey,
             
             for download in moreDownloadUrls['available']:
                 downloadIds.append(download['downloadId'])
-                print("DOWNLOAD: " + download['url'])
-                print("NAME: " + download['entityId'])
                 ee_requests.append(download)
                 
             for download in moreDownloadUrls['requested']:   
                 downloadIds.append(download['downloadId'])
-                print("DOWNLOAD: " + download['url'])
-                print("NAME: " + download['entityId'])
                 ee_requests.append(download)
                 
             # Didn't get all of the requested downloads, call the download-retrieve method again probably after 30 seconds
@@ -310,16 +306,12 @@ def _EE_stageForDownload(apiKey,
                 for download in moreDownloadUrls['available']:                            
                     if download['downloadId'] not in downloadIds:
                         downloadIds.append(download['downloadId'])
-                        print("DOWNLOAD: " + download['url'])
-                        print("NAME: " + download['entityId'])
                         ee_requests.append(download)
                     
         else:
             # Get all available downloads
             for download in requestResults['availableDownloads']:
                 # TODO :: Implement a downloading routine
-                print("DOWNLOAD: " + download['url'])
-                print("NAME: " + download['entityId'])
                 ee_requests.append(download)
         print("\nAll downloads are available to download.\n")
 
