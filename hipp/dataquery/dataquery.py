@@ -21,7 +21,7 @@ Library query and download historical image data from public archives.
 
 ### GENERIC FUNCTIONS
 
-def _download_image(output_directory, 
+def download_image(output_directory, 
                    payload,
                    default_img_ext = '.tif'):
     url, file_name = payload
@@ -33,10 +33,10 @@ def _download_image(output_directory,
     urllib.request.urlretrieve(url,output_file)
     return output_file
 
-def _thread_downloads(output_directory, urls, file_names, max_workers=5):
+def thread_downloads(output_directory, urls, file_names, max_workers=5):
     
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    future_to_url = {pool.submit(_download_image,
+    future_to_url = {pool.submit(download_image,
                                  output_directory,
                                  x): x for x in zip(urls, file_names)}
     results=[]
@@ -54,12 +54,12 @@ def EE_download_images_to_disk(
     calibration_reports_directory_suffix = 'calibration_reports'
 ):
     
-    urls, file_names = _EE_stageForDownload(apiKey, entityIds, label = label)
+    urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
     #one possible download mode - has file names...                                                          
     if file_names:                                                        
         pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
         
-        _thread_downloads(output_directory, 
+        thread_downloads(output_directory, 
                                         urls, 
                                         file_names)
                                         
@@ -80,7 +80,7 @@ def EE_download_images_to_disk(
     else:
         return None, None
     
-def _EE_convert_api_responses_to_dataframe(scenes):
+def EE_convert_api_responses_to_dataframe(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
     # dictionary relating the field names used by the EE API
     # to the HIPP/HSFM preferred column names
@@ -161,7 +161,7 @@ def EE_login(username,
             'password' : password}
     
     url = m2mhost + 'login'
-    api_key = _EE_sendRequest(url, data)
+    api_key = EE_sendRequest(url, data)
     
     return api_key
 
@@ -194,16 +194,16 @@ def EE_pre_select_images(apiKey,
                                'sceneFilter' : {'spatialFilter'     : spatialFilter,
                                                 'acquisitionFilter' : acquisitionFilter},
                                'metadataType': metadataType}
-    scenes = _EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
+    scenes = EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
     print('\nRecords returned:', scenes['recordsReturned'])
     if scenes['recordsReturned'] == maxResults:
         print("\nmaxResults set to:", maxResults, 
               '\nIncrease this parameter to obtain additional records. API max 50,000.')
     
-    results_df = _EE_convert_api_responses_to_dataframe(scenes['results'])
+    results_df = EE_convert_api_responses_to_dataframe(scenes['results'])
     return results_df
     
-def _EE_sendRequest(url, data, apiKey = None):  
+def EE_sendRequest(url, data, apiKey = None):  
     json_data = json.dumps(data)
     
     if apiKey == None:
@@ -238,7 +238,7 @@ def _EE_sendRequest(url, data, apiKey = None):
     
     return output['data']
 
-def _EE_stageForDownload(apiKey,
+def EE_stageForDownload(apiKey,
                         entityIds,
                         label        = 'test_download',
                         datasetName  = 'aerial_combin',
@@ -260,7 +260,7 @@ def _EE_stageForDownload(apiKey,
     
     payload = {'datasetName' : datasetName, 'entityIds' : entityIds}
                         
-    downloadOptions = _EE_sendRequest(serviceUrl + "download-options", payload, apiKey)
+    downloadOptions = EE_sendRequest(serviceUrl + "download-options", payload, apiKey)
 
     # Aggregate a list of available products
     downloads = []
@@ -278,13 +278,13 @@ def _EE_stageForDownload(apiKey,
         payload = {'downloads' : downloads,
                                         'label' : label}
         # Call the download to get the direct download urls
-        requestResults = _EE_sendRequest(serviceUrl + "download-request", payload, apiKey)          
+        requestResults = EE_sendRequest(serviceUrl + "download-request", payload, apiKey)          
                         
         # PreparingDownloads has a valid link that can be used but data may not be immediately available
         # Call the download-retrieve method to get download that is available for immediate download
         if requestResults['preparingDownloads'] != None and len(requestResults['preparingDownloads']) > 0:
             payload = {'label' : label}
-            moreDownloadUrls = _EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
+            moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
             
             downloadIds = []  
             
@@ -302,7 +302,7 @@ def _EE_stageForDownload(apiKey,
                 print("\n", preparingDownloads, "downloads are not available. Waiting for 30 seconds.\n")
                 time.sleep(30)
                 print("Trying to retrieve data\n")
-                moreDownloadUrls = _EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
+                moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
                 for download in moreDownloadUrls['available']:                            
                     if download['downloadId'] not in downloadIds:
                         downloadIds.append(download['downloadId'])
@@ -354,7 +354,7 @@ def NAGAP_download_images_to_disk(image_metadata,
     df['urls'] = base_url + df[image_type_colum]
     urls, file_names = df['urls'], df[file_name_column]
     
-    _thread_downloads(output_directory, urls, file_names)
+    thread_downloads(output_directory, urls, file_names)
     
     hipp.utils.optimize_geotifs(output_directory)
     
