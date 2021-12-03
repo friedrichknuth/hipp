@@ -9,7 +9,13 @@ import pathlib
 import psutil
 import shutil
 
-import hipp
+import hipp.core
+import hipp.image
+import hipp.io
+import hipp.math
+import hipp.qc
+import hipp.tools
+import hipp.utils
 
 """
 Library with core image pre-processing functions.
@@ -569,17 +575,20 @@ def iter_detect_fiducial_proxies(images,
 def load_midside_fiducial_proxy_templates(template_directory):
     
     # need to get rid of old jpg templates and recreate for all marker types
-    if os.path.exists(os.path.join(template_directory,'L.tif')):
-        L = os.path.join(template_directory,'L.tif')
-        T = os.path.join(template_directory,'T.tif')
-        R = os.path.join(template_directory,'R.tif')
-        B = os.path.join(template_directory,'B.tif')
-        
-    elif os.path.exists(os.path.join(template_directory,'L.jpg')):
-        L = os.path.join(template_directory,'L.jpg')
-        T = os.path.join(template_directory,'T.jpg')
-        R = os.path.join(template_directory,'R.jpg')
-        B = os.path.join(template_directory,'B.jpg')
+    l_tif_path = os.path.join(template_directory,'L.tif')
+    l_jpg_path = os.path.join(template_directory,'L.jpg')
+    
+    assert (
+        os.path.exists(l_tif_path) or os.path.exists(l_jpg_path)
+    ), f"Fiducial marker files \"L.tif\" or \"L.jpg\" must exist in provided directory {template_directory}." 
+    
+    extension = '.tif' if os.path.exists(l_tif_path) else '.jpg'
+    
+    L = os.path.join(template_directory,'L' + extension)
+    T = os.path.join(template_directory,'T' + extension)
+    R = os.path.join(template_directory,'R' + extension)
+    B = os.path.join(template_directory,'B' + extension)
+
         
     template_files = [L, T, R, B]
     templates = []

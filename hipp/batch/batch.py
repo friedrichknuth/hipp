@@ -6,7 +6,11 @@ import pandas as pd
 import pathlib
 from skimage import transform as tf
 
-import hipp
+import hipp.core
+import hipp.image
+import hipp.io
+import hipp.plot
+import hipp.qc
 
 def image_restitution(df_detected,
                       fiducial_coordinates_true_mm,

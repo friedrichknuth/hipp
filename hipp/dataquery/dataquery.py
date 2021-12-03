@@ -12,7 +12,8 @@ import sys
 import time
 import urllib
 
-import hipp
+import hipp.io
+import hipp.utils
 
 
 """

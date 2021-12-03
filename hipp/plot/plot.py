@@ -7,7 +7,8 @@ import os
 import pathlib
 import psutil
 
-import hipp
+import hipp.io
+import hipp.plot
 
 """
 Library for common plotting functions.

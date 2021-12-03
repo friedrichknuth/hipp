@@ -4,8 +4,6 @@ import numpy as np
 from skimage import exposure
 from skimage import transform as tf
 
-import hipp
-
 """
 Library for image processing functions. 
 """
