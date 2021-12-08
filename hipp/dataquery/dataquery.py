@@ -52,17 +52,27 @@ def EE_download_images_to_disk(
     label                                = 'test_download',
     output_directory                     = 'input_data',
     images_directory_suffix              = 'raw_images',
-    calibration_reports_directory_suffix = 'calibration_reports'
+    calibration_reports_directory_suffix = 'calibration_reports',
+    max_workers = 5
 ):
-    
     urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
-    #one possible download mode - has file names...                                                          
+
+    #Make sure we are only downloading the files we requested - this can probably be addressed within EE_stageForDownload, but has proven tricky
+    if set([f.split('.')[0] for f in file_names]) != set(entityIds):
+        print(f'Staged files ({len(file_names)}) does not match requested entities ({len(entityIds)}). Filtering staged file names.')
+        urls_and_file_names = zip(urls, file_names)
+        urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
+        urls, file_names = zip(*urls_and_file_names)
+                                  
     if file_names:                                                        
         pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
         
-        thread_downloads(output_directory, 
-                                        urls, 
-                                        file_names)
+        thread_downloads(
+            output_directory, 
+            urls, 
+            file_names, 
+            max_workers=max_workers
+        )
                                         
         hipp.io.gunzip_dir(output_directory)
         # hipp.utils.optimize_geotifs(output_directory)
@@ -75,6 +85,16 @@ def EE_download_images_to_disk(
         
         print('Images in:', images_directory)
         print('Calibration reports in:', calibration_reports_directory)
+
+        print('Correcting origin for all images...')
+        def fix_grid_org(f):
+            im = cv2.imread(f)
+            cv2.imwrite(f, im)
+        original_raw_tif_files = glob.glob(os.path.join(images_directory, '*.tif'))
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        reorged_futures = {pool.submit(fix_grid_org, x): x for x in original_raw_tif_files}
+        for future in concurrent.futures.as_completed(reorged_futures):
+            r = future.result()
         
         return images_directory, calibration_reports_directory
     
