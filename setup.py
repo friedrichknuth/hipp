@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from distutils.core import setup
+import setuptools
 
 setup(name='hipp',
       version='0.1',
@@ -8,6 +9,6 @@ setup(name='hipp',
       author='Friedrich Knuth',
       author_email='knuth@uw.edu',
       # url='',
-      packages=['hipp'],
+      packages=setuptools.find_packages(),
       # install_requires=[''],
      )

@@ -3,7 +3,7 @@ import os
 import pathlib
 from subprocess import Popen, PIPE, STDOUT
 
-import hipp
+import hipp.io
 
 
 """

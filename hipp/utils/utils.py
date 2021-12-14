@@ -2,8 +2,8 @@ import glob
 import os
 import cv2
 
-import hipp
-
+import hipp.io
+import hipp.utils
 """
 Library for command line tools.
 """

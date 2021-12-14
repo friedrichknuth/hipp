@@ -12,7 +12,8 @@ import shutil
 import xarray as xr
 hv.extension('bokeh')
 
-import hipp
+import hipp.image
+import hipp.tools
 
 import warnings
 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)

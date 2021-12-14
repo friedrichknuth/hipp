@@ -1,7 +1,8 @@
 from collections.abc import Iterable
 import numpy as np
 
-import hipp
+import hipp.qc
+import hipp.math
 
 def compute_angle_diff(coordinates, coordinates_true):
     angle = hipp.qc.compute_opposing_fiducial_intersection_angle(coordinates)

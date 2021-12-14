@@ -11,8 +11,10 @@ import requests
 import sys
 import time
 import urllib
+import shutil
 
-import hipp
+import hipp.io
+import hipp.utils
 
 
 """
@@ -32,11 +34,11 @@ def download_image(output_directory,
         output_file = os.path.join(output_directory, base_name + ext)
     urllib.request.urlretrieve(url,output_file)
     return output_file
+
+def thread_downloads(output_directory, urls, file_names, max_workers=5):
     
-def thread_downloads(output_directory, urls, file_names):
-    
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-    future_to_url = {pool.submit(hipp.dataquery.download_image,
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    future_to_url = {pool.submit(download_image,
                                  output_directory,
                                  x): x for x in zip(urls, file_names)}
     results=[]
@@ -45,150 +47,161 @@ def thread_downloads(output_directory, urls, file_names):
         results.append(r)
         print('Download complete for:',r)
 
-## EARTH EXPLORER
-## Using camel case to keep with API convention, where relevant, to help with debugging.
+def EE_download_images_to_disk(
+    apiKey,
+    entityIds,
+    label                                = 'test_download',
+    output_directory                     = 'input_data',
+    images_directory_suffix              = 'raw_images',
+    calibration_reports_directory_suffix = 'calibration_reports',
+    keep_calibration_file_per_image      = False,
+    max_workers = 5
+):
+    urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
 
-def EE_checkCompleted(entityIds,
-                      output_directory):
-    completed = sorted(glob.glob(os.path.join(output_directory,'*')))
+    # Make sure we are only downloading the files we requested.
+    # This can probably be addressed within EE_stageForDownload, but has proven tricky.
+    if set([f.split('.')[0] for f in file_names]) != set(entityIds):
+        print(f'Staged files ({len(file_names)}) does not match requested entities ({len(entityIds)}). Filtering staged file names.')
+        urls_and_file_names = zip(urls, file_names)
+        urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
+        urls, file_names = zip(*urls_and_file_names)
     
-    diff = []
-    for i in entityIds:
-        if any(i in s for s in completed):
-            pass
-        else:
-            diff.append(i)
-    return diff
+    # Download one calibration report per roll.
+    # All images follow the following format as per https://lta.cr.usgs.gov/DD/aerial_single_frame.html
+    '''
+    Format:
+        DDAPPPPPRRRFFFF
+        DD = Data set designator (AR)
+        A = Agency
+        P = Project
+        R = Roll
+        F = Frame
+    Example:
+        AR5750022260121
+    '''
+    # Presumably all images in the same roll underwent the same calibration, so we remove redundant 
+    # calibration files and keep only one instance per roll. It is possible that the same roll 
+    # contains images collectectd with different cameras.
+    if not keep_calibration_file_per_image:
+        print('Downloading one calibration report per roll...')
+        urls_and_file_names_df = pd.DataFrame({"urls":urls, 
+                                       "file_names":[f[:11]+'.pdf' if f[-3:] == 'pdf' else f for f in file_names]})
+        urls_and_file_names_df = urls_and_file_names_df.drop_duplicates(subset='file_names')
+        urls = urls_and_file_names_df['urls'].tolist()
+        file_names = urls_and_file_names_df['file_names'].tolist()
+    else:
+        print('Downloading one calibration report per image...')                      
+    
+    if file_names:                                                        
+        pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+        
+        thread_downloads(
+            output_directory, 
+            urls, 
+            file_names, 
+            max_workers=max_workers
+        )
+                                        
+        hipp.io.gunzip_dir(output_directory)
+        
+        images_directory              = os.path.join(output_directory, images_directory_suffix)
+        calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
 
-def EE_downloadImages(apiKey,
-                      entityIds,
-                      label                                = 'test_download',
-                      output_directory                     = 'input_data',
-                      images_directory_suffix              = 'raw_images',
-                      calibration_reports_directory_suffix = 'calibration_reports'):
+        hipp.io.move_files(output_directory, images_directory, '.tif')
+        hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
+        
+        print('Images in:', images_directory)
+        print('Calibration reports in:', calibration_reports_directory)
+
+        print('Correcting origin for all images...')
+        def fix_grid_org(f):
+            im = cv2.imread(f)
+            cv2.imwrite(f, im)
+        original_raw_tif_files = glob.glob(os.path.join(images_directory, '*.tif'))
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        reorged_futures = {pool.submit(fix_grid_org, x): x for x in original_raw_tif_files}
+        for future in concurrent.futures.as_completed(reorged_futures):
+            r = future.result()
+        return images_directory, calibration_reports_directory
+
     
-    urls, file_names = hipp.dataquery.EE_stageForDownload(apiKey,
-                                                          entityIds,
-                                                          label = label)
-                                                         
-    pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+    else:
+        print("Something went wrong.")
+        return None, None
     
-    hipp.dataquery.thread_downloads(output_directory, 
-                                    urls, 
-                                    file_names)
-                                    
-    hipp.io.gunzip_dir(output_directory)
-#     hipp.utils.optimize_geotifs(output_directory)
-    
-    images_directory              = os.path.join(output_directory, images_directory_suffix)
-    calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
-    
-    hipp.io.move_files(output_directory, images_directory, '.tif')
-    hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
-    
-    print('Images in:', images_directory)
-    print('Calibration reports in:', calibration_reports_directory)
-    
-    return images_directory, calibration_reports_directory
-    
-def EE_filterSceneRecords(scenes):
+def EE_convert_api_responses_to_dataframe(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
-    entityIds = []
-    agencies = []
-    projects = []
-    rolls = []
-    frames = []
-    recordingTechniques = []
-    acquisitionDates = []
-    hi_res_Available = []
-    imageTypes = []
-    qualities = []
-    altitudesFeet = []
-    imageIds = []
-    focalLengths = []
-    centerLats = []
-    centerLons = []
-    NWlats = []
-    NWlons = []
-    NElats = []
-    NElons = []
-    SElats = []
-    SElons = []
-    SWlats = []
-    SWlons = []
+    # dictionary relating the field names used by the EE API
+    # to the HIPP/HSfM preferred column names
+    api_to_hsfm_field_name_dict = {
+        'Entity  ID':                       'entityId',
+        'Agency':                           'agency',
+        'Project':                          'project',
+        'Roll':                             'roll',
+        'Frame':                            'frame',
+        'Recording Technique':              'recordingTechnique',
+        'Acquisition Date':                 'acquisitionDate',
+        'High Resolution Download Avail':   'hi_res_available',
+        'Image Type':                       'imageType',
+        'Quality':                          'quality',
+        'Flying Height in Feet':            'altitudesFeet',
+        'Photo ID':                         'imageId',
+        'Focal Length':                     'focalLength',
+        'Center Latitude dec':              'centerLat',
+        'Center Longitude dec':             'centerLon',
+        'NW Corner Lat dec':                'NWlat',
+        'NW Corner Long dec':               'NWlon',
+        'NE Corner Lat dec':                'NElat',
+        'NE Corner Long dec':               'NElon',
+        'SE Corner Lat dec':                'SElat',
+        'SE Corner Long dec':               'SElon',
+        'SW Corner Lat dec':                'SWlat',
+        'SW Corner Long dec':               'SWlon',
+    }
+
+    #Iterate over api results creating a dataframe for each and appending into one dataframe
+    scenes_df = pd.DataFrame()
     for scene in scenes:
-        for entry in scene['metadata']:
-            if entry['fieldName'] == 'Entity  ID':
-                entityIds.append(entry['value'])
-            if entry['fieldName'] == 'Agency':
-                agencies.append(entry['value'])
-            if entry['fieldName'] == 'Project':
-                projects.append(entry['value'])
-            if entry['fieldName'] == 'Roll':
-                rolls.append(entry['value'])
-            if entry['fieldName'] == 'Frame':
-                frames.append(entry['value'])
-            if entry['fieldName'] == 'Recording Technique':
-                recordingTechniques.append(entry['value'])
-            if entry['fieldName'] == 'Acquisition Date':
-                acquisitionDates.append(entry['value'])
-            if entry['fieldName'] == 'High Resolution Download Avail':
-                hi_res_Available.append(entry['value'])
-            if entry['fieldName'] == 'Image Type':
-                imageTypes.append(entry['value'])
-            if entry['fieldName'] == 'Quality':
-                qualities.append(entry['value'])
-            if entry['fieldName'] == 'Flying Height in Feet':
-                altitudesFeet.append(float(entry['value']))
-            if entry['fieldName'] == 'Photo ID':
-                imageIds.append(entry['value'])
-            if entry['fieldName'] == 'Focal Length':
-                focalLengths.append(float(entry['value'].split(' ')[0]))
-            if entry['fieldName'] == 'Center Latitude dec':
-                centerLats.append(float(entry['value']))
-            if entry['fieldName'] == 'Center Longitude dec':
-                centerLons.append(float(entry['value']))
-            if entry['fieldName'] == 'NW Corner Lat dec':
-                NWlats.append(float(entry['value']))
-            if entry['fieldName'] == 'NW Corner Long dec':
-                NWlons.append(float(entry['value']))
-            if entry['fieldName'] == 'NE Corner Lat dec':
-                NElats.append(float(entry['value']))
-            if entry['fieldName'] == 'NE Corner Long dec':
-                NElons.append(float(entry['value']))
-            if entry['fieldName'] == 'SE Corner Lat dec':
-                SElats.append(float(entry['value']))
-            if entry['fieldName'] == 'SE Corner Long dec':
-                SElons.append(float(entry['value']))
-            if entry['fieldName'] == 'SW Corner Lat dec':
-                SWlats.append(float(entry['value']))
-            if entry['fieldName'] == 'SW Corner Long dec':
-                SWlons.append(float(entry['value']))
-    scenceDict = {'entityId'          : entityIds, 
-                  'agency'            : agencies,
-                  'project'           : projects,
-                  'roll'              : rolls,
-                  'frame'             : agencies,
-                  'recordingTechnique': recordingTechniques,
-                  'acquisitionDate'   : acquisitionDates,
-                  'hi_res_available'  : hi_res_Available,
-                  'imageType'         : imageTypes,
-                  'quality'           : qualities,
-                  'altitudesFeet'     : altitudesFeet,
-                  'imageId'           : imageIds,
-                  'focalLength'       : focalLengths,
-                  'centerLat'         : centerLats,
-                  'centerLon'         : centerLons,
-                  'NWlat'             : NWlats,
-                  'NWlon'             : NWlons,
-                  'NElat'             : NElats,
-                  'NElon'             : NElons,
-                  'SElat'             : SElats,
-                  'SElon'             : SElons,
-                  'SWlat'             : SWlats,
-                  'SWlon'             : SWlons}
-    df = pd.DataFrame(scenceDict)
-    return df
+        #This pandas work converts the tidy format of the API response to a column-organized dataframe
+        one_scene_df = pd.DataFrame(scene['metadata'])
+        one_scene_df = one_scene_df[one_scene_df.fieldName.isin(api_to_hsfm_field_name_dict.keys())]
+        one_scene_df = one_scene_df[['fieldName', 'value']].set_index(
+            'fieldName'
+            ).transpose().rename_axis(
+                None, 
+                axis = 1
+            ).reset_index(drop=True)
+        scenes_df = scenes_df.append(one_scene_df)
+
+    #Rename column names to the HIPP/HSfM preferred column names
+    scenes_df = scenes_df.rename(api_to_hsfm_field_name_dict, axis=1)
+    #Clean up the combined dataframe
+
+    #get rid of the mm part of the "focalLength" column and make it a float
+    scenes_df['focalLength'] = scenes_df['focalLength'].apply(lambda s: s.split(' ')[0])
+
+    #Make numeric columns type float
+    convert_dict = {
+        'altitudesFeet': float,
+        'focalLength': float,
+        'centerLat': float,
+        'centerLon': float,
+        'NWlat': float,
+        'NWlon': float,
+        'NElat': float,
+        'NElon': float,
+        'SElat': float,
+        'SElon': float,
+        'SWlat': float,
+        'SWlon': float
+    }
+    
+    scenes_df = scenes_df.astype(convert_dict)
+
+    scenes_df = scenes_df.reset_index(drop=True)
+
+    return scenes_df
     
 def EE_login(username,
              password,
@@ -198,11 +211,11 @@ def EE_login(username,
             'password' : password}
     
     url = m2mhost + 'login'
-    api_key = hipp.dataquery.EE_sendRequest(url, data)
+    api_key = EE_sendRequest(url, data)
     
     return api_key
 
-def EE_sceneSearch(apiKey,
+def EE_pre_select_images(apiKey,
                    xmin,ymin,xmax,ymax,
                    startDate,endDate,
                    metadataType = 'full', #'summary', None
@@ -231,13 +244,14 @@ def EE_sceneSearch(apiKey,
                                'sceneFilter' : {'spatialFilter'     : spatialFilter,
                                                 'acquisitionFilter' : acquisitionFilter},
                                'metadataType': metadataType}
-    scenes = hipp.dataquery.EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
+    scenes = EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
     print('\nRecords returned:', scenes['recordsReturned'])
     if scenes['recordsReturned'] == maxResults:
         print("\nmaxResults set to:", maxResults, 
               '\nIncrease this parameter to obtain additional records. API max 50,000.')
     
-    return scenes['results']
+    results_df = EE_convert_api_responses_to_dataframe(scenes['results'])
+    return results_df
     
 def EE_sendRequest(url, data, apiKey = None):  
     json_data = json.dumps(data)
@@ -280,127 +294,93 @@ def EE_stageForDownload(apiKey,
                         datasetName  = 'aerial_combin',
                         serviceUrl   = 'https://m2m.cr.usgs.gov/api/api/json/stable/'):
     
-    # check what is available and get productIDs
-    downloadOptionsParameters = {'datasetName' : datasetName,
-                                 'entityIds' : entityIds}
-    downloadOptions = hipp.dataquery.EE_sendRequest(serviceUrl + "download-options", 
-                                                    downloadOptionsParameters, apiKey)
-    entityIds_available = []
+    
+    """Stage downloads using the EarthExplorer api and a given list of entityIds
+
+    Products/requests are filtered such that only requests with "collectionName" equal to "Aerial Photo Single Frames"
+    and with "productName" that is equal to either "Camera Calibration File" or "High Resolution Product"
+
+    API request handling adapted from usgs example https://m2m.cr.usgs.gov/api/docs/example/download_data-py
+
+    Returns:
+        urls, filenames: tuple of urls and names for the files
+    """
+    ee_requests = []
+    # download datasets
+    
+    payload = {'datasetName' : datasetName, 'entityIds' : entityIds}
+                        
+    downloadOptions = EE_sendRequest(serviceUrl + "download-options", payload, apiKey)
+
+    # Aggregate a list of available products
     downloads = []
-    calibrationReports = []
-
     for product in downloadOptions:
-        if product['available'] == True:
-            if product['productName'] =='High Resolution Product':
-                downloads.append({'entityId' : product['entityId'],
-                                  'productId' : product['id']})
-                entityIds_available.append(product['entityId'])
-            if product['productName'] =='Camera Calibration File':
-                calibrationReports.append({'entityId' : product['entityId'],
-                                           'productId' : product['id']})
-    print('Reqested images:', len(entityIds))
-    print('Available images:',len(entityIds_available))
-    if len(entityIds_available) == 0:
-        print('No images available for downland.')
-        sys.exit()
-    diff = (list(list(set(entityIds)-set(entityIds_available)) + list(set(entityIds_available)-set(entityIds))))
-    if len(diff) > 0:
-        print('Unavailable images:')
-        for i in [*diff]:
-            print(i)
-    
-    # only download calibration report once.
-    cal = list({v['productId']:v for v in calibrationReports}.values())
-    if len(cal) > 0:
-        print('Corresponding Calibration reports:', len(cal))
-        downloads.extend(cal)
-        
-    print('Total files being requested:', len(entityIds)+len(cal))
-    
-    # request for staging
-    downloadRequestParameters = {'downloads' : downloads,
-                                 'label' : label}
-    
-    print('\nSending request to stage files for download in API location:', label)
-    # TODO add spinner
-    requestResults = hipp.dataquery.EE_sendRequest(serviceUrl + "download-request",
-                                                   downloadRequestParameters, apiKey)
-    
-    fileNames = []
-    urls      = []
-
-    # handle previously requested files under different label
-    if requestResults['duplicateProducts']:
-        previouslyRequested_DownloadIds = list(requestResults['duplicateProducts'].keys())
-        previouslyRequested_labels      = list(set(list(requestResults['duplicateProducts'].values())))
-        if len(previouslyRequested_DownloadIds) > 0:
-            print('\nRetrieving', 
-                  len(previouslyRequested_DownloadIds), 
-                  'previously requested files in API locations:',
-                  *previouslyRequested_labels)
-            for previousLabel in previouslyRequested_labels:
-                downloadRetrieveParameters = {'label' : previousLabel}
-                moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                                 downloadRetrieveParameters, apiKey)
-                for downloadId in previouslyRequested_DownloadIds:
-                    for i in moreDownloadUrls['available']:
-                        if int(i['downloadId']) == int(downloadId):
-                            if i['productName'] == 'USGS CAMERA CALIBRATION REPORT DOWNLOAD':
-                                fileNames.append(i['entityId']+'_calibration_report.pdf')
-                                urls.append(i['url'])
-                            elif i['productName'] == 'AERIAL PHOTO SINGLE FRAME HIGH RESOLUTION DOWNLOAD':
-                                fileNames.append(i['entityId']+'.tif.gz')
-                                urls.append(i['url'])
-            print('Retrieved', len(fileNames), 'previously requested files in API locations:', *previouslyRequested_labels)
-            if len(fileNames) !=  len(previouslyRequested_DownloadIds):
-                    print('Unable to find:',
-                           len(previouslyRequested_DownloadIds) - len(fileNames),
-                           'files. API says they should be in:',
-                           *previouslyRequested_labels,
-                           '¯\_(ツ)_/¯') 
-                    #This issue is under investigation with the helpdesk... awaiting response.          
-
-    # check for requests sent to new label
-    downloadRetrieveParameters = {'label' : label}
-    moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                     downloadRetrieveParameters, apiKey)
-                                                     
-    print('\n')
-    if int(moreDownloadUrls['queueSize']) != 0:
-        print('Staging',len(moreDownloadUrls['available']), 'new requests in API location:', label)
-    while int(moreDownloadUrls['queueSize']) != 0:
-        moreDownloadUrls = hipp.dataquery.EE_sendRequest(serviceUrl + "download-retrieve",
-                                                         downloadRetrieveParameters, apiKey)
-        # TODO if this takes to long should start thread to download available and pop from list
-        if int(moreDownloadUrls['queueSize']) != 0:
-            print('New requests in queue:', moreDownloadUrls['queueSize'])
-            print('Retry in 30 seconds. Proceeding when queue = 0')
-            time.sleep(30)
-
-
-    for i in moreDownloadUrls['available']:
-        if i['productName'] == 'Camera Calibration File':
-            fileNames.append(i['entityId']+'_calibration_report.pdf')
-            urls.append(i['url'])
-
-        elif i['productName'] == 'High Resolution Product':
-            fileNames.append(i['entityId']+'.tif.gz')
-            urls.append(i['url'])
+            # Make sure the product is available for this scene
+            if product['available'] == True:
+                    downloads.append({'entityId' : product['entityId'],
+                                    'productId' : product['id']})
+                    
+    # Did we find products?
+    if downloads:
+        requestedDownloadsCount = len(downloads)
+        # set a label for the download request
+        label = "download-sample"
+        payload = {'downloads' : downloads,
+                                        'label' : label}
+        # Call the download to get the direct download urls
+        requestResults = EE_sendRequest(serviceUrl + "download-request", payload, apiKey)          
+                        
+        # PreparingDownloads has a valid link that can be used but data may not be immediately available
+        # Call the download-retrieve method to get download that is available for immediate download
+        if requestResults['preparingDownloads'] != None and len(requestResults['preparingDownloads']) > 0:
+            payload = {'label' : label}
+            moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
             
-    print('\nAvailable and ready for download:', len(fileNames))
+            downloadIds = []  
+            
+            for download in moreDownloadUrls['available']:
+                downloadIds.append(download['downloadId'])
+                ee_requests.append(download)
+                
+            for download in moreDownloadUrls['requested']:   
+                downloadIds.append(download['downloadId'])
+                ee_requests.append(download)
+                
+            # Didn't get all of the requested downloads, call the download-retrieve method again probably after 30 seconds
+            while len(downloadIds) < requestedDownloadsCount: 
+                preparingDownloads = requestedDownloadsCount - len(downloadIds)
+                print("\n", preparingDownloads, "downloads are not available. Waiting for 30 seconds.\n")
+                time.sleep(30)
+                print("Trying to retrieve data\n")
+                moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
+                for download in moreDownloadUrls['available']:                            
+                    if download['downloadId'] not in downloadIds:
+                        downloadIds.append(download['downloadId'])
+                        ee_requests.append(download)
+                    
+        else:
+            # Get all available downloads
+            for download in requestResults['availableDownloads']:
+                ee_requests.append(download)
+        print("\nAll downloads are available to download.\n")
+
+        # Download images
+    filtered_reqs = [
+        rq for rq in ee_requests
+        if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product']
+    ]
+
+    urls = []
+    filenames = []
+    for req in filtered_reqs:
+        if req['productName'] =='Camera Calibration File':
+            name = req['entityId'] + '.pdf'
+        else:
+            name = req['entityId'] + '.tif.gz'
+        urls.append(req['url'])
+        filenames.append(name)
     
-    if len(fileNames) != len(entityIds)+len(cal):
-        print('\nWARNING: Missing files:',(len(entityIds)+len(cal)) - len(fileNames))
-        for i in entityIds:
-            if any(i in s for s in fileNames):
-                pass
-            else:
-                print('Unable to find:', i)
-                pass
-#                 print('Unable to find:', i, 'in', *previouslyRequested_labels)
-
-    return urls, fileNames
-
+    return urls, filenames
 
 ## ARCTICDATA.IO
 
@@ -423,7 +403,7 @@ def NAGAP_download_images_to_disk(image_metadata,
     df['urls'] = base_url + df[image_type_colum]
     urls, file_names = df['urls'], df[file_name_column]
     
-    hipp.dataquery.thread_downloads(output_directory, urls, file_names)
+    thread_downloads(output_directory, urls, file_names)
     
     hipp.utils.optimize_geotifs(output_directory)
     
