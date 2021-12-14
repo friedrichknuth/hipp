@@ -2,6 +2,7 @@ import cv2
 import glob
 import numpy as np
 import os
+import sys
 import pandas as pd
 import pathlib
 from skimage import transform as tf
@@ -352,6 +353,8 @@ def preprocess_with_fiducial_proxies(image_directory,
 
     principal_points, distances, intersection_angles = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
                                                                                                       verbose=verbose)
+    if np.isnan(np.nanmin(distances)):
+        sys.exit('Could not compute distance between any fiducial proxies and principal point. Detection likely failed. Check your inputs.')
     
     if qc_df:
         print("Saving proxy detection QC dataframes to", qc_df_output_directory)
@@ -372,9 +375,10 @@ def preprocess_with_fiducial_proxies(image_directory,
                                     output_directory = qc_plots_output_directory,
                                     verbose=verbose)
     
-    if isinstance(image_square_dim, type(None)):
-        if isinstance(missing_proxy, type(None)):
+    if not image_square_dim:
+        if not missing_proxy:
             image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+                
         else:
             # get image dimensions and subtract principal points to get minimal viable cropping distance,
             # given entirely missing side (and fiducial proxy) for image set.
