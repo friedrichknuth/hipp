@@ -12,7 +12,7 @@ import sys
 import time
 import urllib
 import shutil
-
+import gzip
 import hipp.io
 import hipp.utils
 
@@ -103,7 +103,15 @@ def EE_download_images_to_disk(
             max_workers=max_workers
         )
                                         
-        hipp.io.gunzip_dir(output_directory)
+        #hipp.io.gunzip_dir(output_directory)
+        files = sorted(glob.glob(os.path.join(output_directory,'*.gz')))
+        for fn in files:
+            bn=os.path.basename(fn).split('.gz')[0]   
+            newpath=os.path.join(output_directory,bn)
+
+            with gzip.open(fn, 'r') as f_in, open(newpath, 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            os.remove(fn)
         
         images_directory              = os.path.join(output_directory, images_directory_suffix)
         calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
