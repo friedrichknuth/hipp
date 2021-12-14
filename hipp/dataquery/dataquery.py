@@ -11,6 +11,7 @@ import requests
 import sys
 import time
 import urllib
+import shutil
 
 import hipp.io
 import hipp.utils
@@ -53,17 +54,45 @@ def EE_download_images_to_disk(
     output_directory                     = 'input_data',
     images_directory_suffix              = 'raw_images',
     calibration_reports_directory_suffix = 'calibration_reports',
+    keep_calibration_file_per_image      = False,
     max_workers = 5
 ):
     urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
 
-    #Make sure we are only downloading the files we requested - this can probably be addressed within EE_stageForDownload, but has proven tricky
+    # Make sure we are only downloading the files we requested.
+    # This can probably be addressed within EE_stageForDownload, but has proven tricky.
     if set([f.split('.')[0] for f in file_names]) != set(entityIds):
         print(f'Staged files ({len(file_names)}) does not match requested entities ({len(entityIds)}). Filtering staged file names.')
         urls_and_file_names = zip(urls, file_names)
         urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
         urls, file_names = zip(*urls_and_file_names)
-                                  
+    
+    # Download one calibration report per roll.
+    # All images follow the following format as per https://lta.cr.usgs.gov/DD/aerial_single_frame.html
+    '''
+    Format:
+        DDAPPPPPRRRFFFF
+        DD = Data set designator (AR)
+        A = Agency
+        P = Project
+        R = Roll
+        F = Frame
+    Example:
+        AR5750022260121
+    '''
+    # Presumably all images in the same roll underwent the same calibration, so we remove redundant 
+    # calibration files and keep only one instance per roll. It is possible that the same roll 
+    # contains images collectectd with different cameras.
+    if not keep_calibration_file_per_image:
+        print('Downloading one calibration report per roll...')
+        urls_and_file_names_df = pd.DataFrame({"urls":urls, 
+                                       "file_names":[f[:11]+'.pdf' if f[-3:] == 'pdf' else f for f in file_names]})
+        urls_and_file_names_df = urls_and_file_names_df.drop_duplicates(subset='file_names')
+        urls = urls_and_file_names_df['urls'].tolist()
+        file_names = urls_and_file_names_df['file_names'].tolist()
+    else:
+        print('Downloading one calibration report per image...')                      
+    
     if file_names:                                                        
         pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
         
@@ -75,11 +104,10 @@ def EE_download_images_to_disk(
         )
                                         
         hipp.io.gunzip_dir(output_directory)
-        # hipp.utils.optimize_geotifs(output_directory)
         
         images_directory              = os.path.join(output_directory, images_directory_suffix)
         calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
-        
+
         hipp.io.move_files(output_directory, images_directory, '.tif')
         hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
         
@@ -95,16 +123,17 @@ def EE_download_images_to_disk(
         reorged_futures = {pool.submit(fix_grid_org, x): x for x in original_raw_tif_files}
         for future in concurrent.futures.as_completed(reorged_futures):
             r = future.result()
-        
         return images_directory, calibration_reports_directory
+
     
     else:
+        print("Something went wrong.")
         return None, None
     
 def EE_convert_api_responses_to_dataframe(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
     # dictionary relating the field names used by the EE API
-    # to the HIPP/HSFM preferred column names
+    # to the HIPP/HSfM preferred column names
     api_to_hsfm_field_name_dict = {
         'Entity  ID':                       'entityId',
         'Agency':                           'agency',
@@ -145,7 +174,7 @@ def EE_convert_api_responses_to_dataframe(scenes):
             ).reset_index(drop=True)
         scenes_df = scenes_df.append(one_scene_df)
 
-    #Rename column names to the HIPP/HSFM preferred column names
+    #Rename column names to the HIPP/HSfM preferred column names
     scenes_df = scenes_df.rename(api_to_hsfm_field_name_dict, axis=1)
     #Clean up the combined dataframe
 
@@ -332,7 +361,6 @@ def EE_stageForDownload(apiKey,
         else:
             # Get all available downloads
             for download in requestResults['availableDownloads']:
-                # TODO :: Implement a downloading routine
                 ee_requests.append(download)
         print("\nAll downloads are available to download.\n")
 
