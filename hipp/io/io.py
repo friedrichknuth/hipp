@@ -1,6 +1,8 @@
 import glob
+import gzip
 import os
 import pathlib
+import shutil
 from subprocess import Popen, PIPE, STDOUT
 
 import hipp.io
@@ -25,6 +27,19 @@ def gunzip_dir(input_directory,
         files = sorted(glob.glob(os.path.join(input_directory,'*.gz')))
         for f in files:
             print(os.path.splitext(f)[0], 'already exists. -- skipped')
+            
+def gzip_dir(input_directory,
+               keep    = False):
+    print('gzipping files in', input_directory)
+    files = sorted(glob.glob(os.path.join(input_directory,'*.gz')))
+    for fn in files:
+        bn=os.path.basename(fn).split('.gz')[0]   
+        newpath=os.path.join(input_directory,bn)
+
+        with gzip.open(fn, 'r') as f_in, open(newpath, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        if not keep:
+            os.remove(fn)
 
 def move_files(input_directory, 
                output_directory, 
