@@ -103,7 +103,7 @@ def EE_download_images_to_disk(
             max_workers=max_workers
         )
                                         
-        hipp.io.gunzip_dir(output_directory)
+        hipp.io.gzip_dir(output_directory)
         
         images_directory              = os.path.join(output_directory, images_directory_suffix)
         calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
