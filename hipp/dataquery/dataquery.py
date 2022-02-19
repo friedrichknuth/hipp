@@ -305,6 +305,11 @@ def EE_stageForDownload(apiKey,
     Returns:
         urls, filenames: tuple of urls and names for the files
     """
+    
+    ## Best to leave this hard coded. More information in 
+    ## https://github.com/friedrichknuth/hipp/issues/10
+    label = "download-sample"
+    
     ee_requests = []
     # download datasets
     
@@ -319,12 +324,13 @@ def EE_stageForDownload(apiKey,
             if product['available'] == True:
                     downloads.append({'entityId' : product['entityId'],
                                     'productId' : product['id']})
+            else:
+                print(product['entityId'], 'not available for download')
                     
     # Did we find products?
     if downloads:
         requestedDownloadsCount = len(downloads)
         # set a label for the download request
-        label = "download-sample"
         payload = {'downloads' : downloads,
                                         'label' : label}
         # Call the download to get the direct download urls
@@ -364,7 +370,6 @@ def EE_stageForDownload(apiKey,
                 ee_requests.append(download)
         print("\nAll downloads are available to download.\n")
 
-        # Download images
     filtered_reqs = [
         rq for rq in ee_requests
         if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product']
