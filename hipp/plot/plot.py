@@ -156,3 +156,47 @@ def plot_proxies(data,
     plt.close(fig)
     print("Fiducial proxy QC plot at:", output_file_name)
     return output_file_name
+
+## some helper functions
+def check_if_number_even(n):
+    """
+    checks if int n is an even number
+    """
+    if (n % 2) == 0:
+        return True
+    else:
+        return False
+
+
+def make_number_even(n):
+    """
+    adds 1 to int n if odd number
+    """
+    if check_if_number_even(n):
+        return n
+    else:
+        return n + 1
+
+
+def get_row_column(n):
+    """
+    returns largest factor pair for int n
+    makes rows the larger number
+    """
+    max_pair = max([(i, n / i) for i in range(1, int(n ** 0.5) + 1) if n % i == 0])
+    rows = int(max(max_pair))
+    columns = int(min(max_pair))
+
+    # in case n is odd
+    # check if you get a smaller pair by adding 1 to make number even
+    if not check_if_number_even(n):
+        n = make_number_even(n)
+        max_pair = max([(i, n / i) for i in range(1, int(n ** 0.5) + 1) if n % i == 0])
+        alt_rows = int(max(max_pair))
+        alt_columns = int(min(max_pair))
+
+        if (rows, columns) > (alt_rows, alt_columns):
+            return (alt_rows, alt_columns)
+        else:
+            return (rows, columns)
+    return (rows, columns)
