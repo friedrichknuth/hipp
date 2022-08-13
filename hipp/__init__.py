@@ -8,4 +8,3 @@ import hipp.plot
 import hipp.qc
 import hipp.tools
 import hipp.utils
-import hipp.geospatial
