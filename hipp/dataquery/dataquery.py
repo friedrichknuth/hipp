@@ -172,7 +172,8 @@ def EE_convert_api_responses_to_dataframe(scenes):
                 None, 
                 axis = 1
             ).reset_index(drop=True)
-        scenes_df = scenes_df.append(one_scene_df)
+        scenes_df = pd.concat([scenes_df, one_scene_df])
+        scenes_df = scenes_df.reset_index(drop=True)
 
     #Rename column names to the HIPP/HSfM preferred column names
     scenes_df = scenes_df.rename(api_to_hsfm_field_name_dict, axis=1)
