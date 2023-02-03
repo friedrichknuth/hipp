@@ -57,14 +57,29 @@ def EE_download_images_to_disk(
     keep_calibration_file_per_image      = False,
     max_workers = 5
 ):
+
     urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
 
     # Make sure we are only downloading the files we requested.
     # This can probably be addressed within EE_stageForDownload, but has proven tricky.
     if set([f.split('.')[0] for f in file_names]) != set(entityIds):
-        print(f'Staged files ({len(file_names)}) does not match requested entities ({len(entityIds)}). Filtering staged file names.')
+        print('Filtering staged file names.')
         urls_and_file_names = zip(urls, file_names)
         urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
+        if len(urls_and_file_names) != len(entityIds):
+            print('Not all files staged yet. Retrying in 30 seconds.')
+            time.sleep(30)
+            urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
+            urls_and_file_names = zip(urls, file_names)
+            urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
+            
+        elif len(urls_and_file_names) == 0:
+            print("Nothing left after filtering. Something went wrong. Please retry.")
+            sys.exit()
+        
+        print('Remaining files after filtering:',len(urls_and_file_names))
+        if len(urls_and_file_names) != len(entityIds):
+            print("Please retry again later in case staging files is taking longer than expected.")
         urls, file_names = zip(*urls_and_file_names)
     
     # Download one calibration report per roll.
@@ -84,29 +99,30 @@ def EE_download_images_to_disk(
     # calibration files and keep only one instance per roll. It is possible that the same roll 
     # contains images collectectd with different cameras.
     if not keep_calibration_file_per_image:
-        print('Downloading one calibration report per roll...')
+        print('\nDownloading calibration report for roll.')
         urls_and_file_names_df = pd.DataFrame({"urls":urls, 
                                        "file_names":[f[:11]+'.pdf' if f[-3:] == 'pdf' else f for f in file_names]})
         urls_and_file_names_df = urls_and_file_names_df.drop_duplicates(subset='file_names')
         urls = urls_and_file_names_df['urls'].tolist()
         file_names = urls_and_file_names_df['file_names'].tolist()
     else:
-        print('Downloading one calibration report per image...')                      
+        print('\nDownloading one calibration report per image...')                      
     
     if file_names:                                                        
         pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
-        
+        print('Threading image downloads with', max_workers, 'workers.') 
         thread_downloads(
             output_directory, 
             urls, 
             file_names, 
             max_workers=max_workers
-        )
-                                        
-        hipp.io.gzip_dir(output_directory)
+        ) 
         
         images_directory              = os.path.join(output_directory, images_directory_suffix)
-        calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)
+        calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)                       
+        
+        print(len(glob.glob(os.path.join(output_directory,'*.tif.gz'))), 'images downloaded.')
+        hipp.io.gzip_dir(output_directory)
 
         hipp.io.move_files(output_directory, images_directory, '.tif')
         hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
@@ -114,7 +130,7 @@ def EE_download_images_to_disk(
         print('Images in:', images_directory)
         print('Calibration reports in:', calibration_reports_directory)
 
-        print('Correcting origin for all images...')
+        print('Correcting origin for all images.\n')
         def fix_grid_org(f):
             im = cv2.imread(f)
             cv2.imwrite(f, im)
@@ -233,8 +249,8 @@ def EE_pre_select_images(apiKey,
     end_date   = '1966-12-10'     
     """
     print('Max records requested:',maxResults)
-    print('\nBounds:\nxmin', xmin,'\nymin', ymin,'\nxmax',xmax,'\nymax',ymax)
-    print('\nTime range:', startDate,'to', endDate)
+    print('Bounds:\n  xmin', xmin,'\n  ymin', ymin,'\n  xmax',xmax,'\n  ymax',ymax)
+    print('Time range:', startDate,'to', endDate)
     
     spatialFilter =  {'filterType' : "mbr",
                       'lowerLeft'  : {'latitude' : ymin, 'longitude' : xmax},
@@ -321,12 +337,12 @@ def EE_stageForDownload(apiKey,
     # Aggregate a list of available products
     downloads = []
     for product in downloadOptions:
-            # Make sure the product is available for this scene
-            if product['available'] == True:
-                    downloads.append({'entityId' : product['entityId'],
-                                    'productId' : product['id']})
-            else:
-                print(product['entityId'], 'not available for download')
+        if product['available'] == True:
+            downloads.append({'entityId' : product['entityId'],
+                              'productId' : product['id']})
+#             print(product['entityId'], product['productName'], 'available for download')
+#         else:
+#             print(product['entityId'], product['productName'], 'not available for download')
                     
     # Did we find products?
     if downloads:
@@ -356,9 +372,8 @@ def EE_stageForDownload(apiKey,
             # Didn't get all of the requested downloads, call the download-retrieve method again probably after 30 seconds
             while len(downloadIds) < requestedDownloadsCount: 
                 preparingDownloads = requestedDownloadsCount - len(downloadIds)
-                print("\n", preparingDownloads, "downloads are not available. Waiting for 30 seconds.\n")
+                print("\n", preparingDownloads, "images are not staged. Retry in 30 seconds.\n")
                 time.sleep(30)
-                print("Trying to retrieve data\n")
                 moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
                 for download in moreDownloadUrls['available']:                            
                     if download['downloadId'] not in downloadIds:
@@ -369,24 +384,34 @@ def EE_stageForDownload(apiKey,
             # Get all available downloads
             for download in requestResults['availableDownloads']:
                 ee_requests.append(download)
-        print("\nAll downloads are available to download.\n")
+#         print("All images are staged for download.")
 
-    filtered_reqs = [
-        rq for rq in ee_requests
-        if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product']
-    ]
+        filtered_reqs = [
+            rq for rq in ee_requests
+    #         print(rq['collectionName'])
+            if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product'] # 'Medium Resolution Product'
+        ]
 
-    urls = []
-    filenames = []
-    for req in filtered_reqs:
-        if req['productName'] =='Camera Calibration File':
-            name = req['entityId'] + '.pdf'
-        else:
-            name = req['entityId'] + '.tif.gz'
-        urls.append(req['url'])
-        filenames.append(name)
-    
-    return urls, filenames
+        urls = []
+        filenames = []
+        for req in filtered_reqs:
+            if req['productName'] =='Camera Calibration File':
+                name = req['entityId'] + '.pdf'
+            else:
+                name = req['entityId'] + '.tif.gz'
+            urls.append(req['url'])
+            filenames.append(name)
+
+        return urls, filenames
+    else:
+        print("\nNo records available for download")
+        for product in downloadOptions:
+            if product['available'] == True:
+                print(product['entityId'], product['productName'], 'available for download')
+            else:
+                print(product['entityId'], product['productName'], 'not available for download')
+                
+        sys.exit(1)
 
 ## ARCTICDATA.IO
 

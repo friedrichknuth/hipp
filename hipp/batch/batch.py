@@ -375,21 +375,24 @@ def preprocess_with_fiducial_proxies(image_directory,
                                     output_directory = qc_plots_output_directory,
                                     verbose=verbose)
     
-    if not image_square_dim:
-        if not missing_proxy:
-            image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+    image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+    
+#     if not image_square_dim:
+        
+#         if not missing_proxy:
+#             image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
                 
-        else:
-            # get image dimensions and subtract principal points to get minimal viable cropping distance,
-            # given entirely missing side (and fiducial proxy) for image set.
-            y,x = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE).shape
-            df_tmp = pd.DataFrame(principal_points)
-            a = int(round((y - df_tmp.iloc[:,0]).min()))
-            b = int(round((x - df_tmp.iloc[:,1]).min()))
-            if a > b:
-                image_square_dim = b*2
-            else:
-                image_square_dim = a*2
+#         else:
+#             # get image dimensions and subtract principal points to get minimal viable cropping distance,
+#             # given entirely missing side (and fiducial proxy) for image set.
+#             y,x = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE).shape
+#             df_tmp = pd.DataFrame(principal_points)
+#             a = int(round((y - df_tmp.iloc[:,0]).min()))
+#             b = int(round((x - df_tmp.iloc[:,1]).min()))
+#             if a > b:
+#                 image_square_dim = b*2
+#             else:
+#                 image_square_dim = a*2
     print("Cropping images to square with dimensions", str(image_square_dim))
 
     hipp.core.iter_crop_image_from_file(images,
