@@ -5,6 +5,7 @@ dependencies:
   - python=3.10
   - bokeh
   - datashader
+  - geopandas
   - holoviews
   - hvplot
   - opencv
@@ -13,4 +14,4 @@ dependencies:
   - rasterio
   - scikit-image
   - xarray
-  - pytesseract
+

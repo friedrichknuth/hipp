@@ -175,11 +175,9 @@ def create_fiducial_template(image_file,
     return out
     
 def create_midside_fiducial_proxies_template(image_file, 
+                                             df = None,
                                              output_directory = 'input_data/fiducials',
                                              buffer_distance = 250):
-    
-    print('Select inner most point to crop from for midside fiducial marker proxies,')
-    print('in order from Left - Top - Right - Bottom.')
     
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
@@ -188,9 +186,11 @@ def create_midside_fiducial_proxies_template(image_file,
     image_array = hipp.image.img_linear_stretch(image_array)
     image_array = hipp.core.pad_image(image_array,
                                       buffer_distance = buffer_distance)
-    
-    df = hipp.tools.point_picker(image_file,
-                                 point_count = 4)
+    if isinstance(df,type(None)):
+        print('Select inner most point to crop from for midside fiducial marker proxies,')
+        print('in order from Left - Top - Right - Bottom.')
+        df = hipp.tools.point_picker(image_file,
+                                point_count = 4)
     
     df = df + buffer_distance
     
