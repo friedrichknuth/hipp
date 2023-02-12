@@ -14,7 +14,7 @@ import hipp.plot
 import hipp.qc
 
 def image_restitution(df_detected,
-                      fiducial_coordinates_true_mm,
+                      fiducial_coordinates_true_mm = None,
                       image_file_name_column_name = 'fileName',
                       scanning_resolution_mm = 0.02,
                       transform_coords = True,
@@ -57,12 +57,13 @@ def image_restitution(df_detected,
     qc_dataframes = []
     
     # convert true coordinates to image reference system
-    fiducial_coordinates_true_mm = np.array(fiducial_coordinates_true_mm,dtype=float)
-    fiducial_coordinates_true_px = fiducial_coordinates_true_mm / scanning_resolution_mm
-    fiducial_coordinates_true_px[:,1] = fiducial_coordinates_true_px[:,1] * -1
+    if fiducial_coordinates_true_mm:
+        fiducial_coordinates_true_mm = np.array(fiducial_coordinates_true_mm,dtype=float)
+        fiducial_coordinates_true_px = fiducial_coordinates_true_mm / scanning_resolution_mm
+        fiducial_coordinates_true_px[:,1] = fiducial_coordinates_true_px[:,1] * -1
     
     # prepare dataframe with detected coordinates
-    df_coords = df_detected.drop(['fileName','principal_point_x','principal_point_y'], axis=1)
+    df_coords = df_detected.drop([image_file_name_column_name,'principal_point_x','principal_point_y'], axis=1)
     
     for index, row in df_coords.iterrows():
 
@@ -75,10 +76,11 @@ def image_restitution(df_detected,
                                     df_detected['principal_point_y'].iloc[index]))
 
         # add prinicpal point to get true fiducial coordinates into image reference system
-        fiducial_coordinates_true = fiducial_coordinates_true_px + principal_point
+        if fiducial_coordinates_true_mm:
+            fiducial_coordinates_true = fiducial_coordinates_true_px + principal_point
 
 
-        if qc:
+        if qc and fiducial_coordinates_true_mm:
             # convert coordinates to camera reference system.
             fiducial_coordinates_mm, principal_point_mm = hipp.qc.convert_coordinates(fiducial_coordinates,
                                                                                       principal_point,
@@ -326,7 +328,8 @@ def preprocess_with_fiducial_proxies(image_directory,
                                      qc_df = True,
                                      qc_df_output_directory='qc/proxy_detection_data_frames',
                                      qc_plots=True,
-                                     qc_plots_output_directory='qc/proxy_detection'):
+                                     qc_plots_output_directory='qc/proxy_detection',
+                                     EE_find_matching_template = False):
     """
     Detects fiducial marker proxies at midside left, top, right, and bottom positions.
     
@@ -338,24 +341,119 @@ def preprocess_with_fiducial_proxies(image_directory,
     To read in and examine QC dataframe use pandas.read_pickle('proxy_locations_df.pd'), 
     for example.
     """
-                                     
-    templates = hipp.core.load_midside_fiducial_proxy_templates(template_directory)
-    images = sorted(glob.glob(os.path.join(image_directory,'*.tif')))
+    images = sorted(list(pathlib.Path(image_directory).glob('*tif')))
     
-    detected_df = hipp.core.iter_detect_fiducial_proxies(images,
-                                                         templates,
-                                                         buffer_distance = buffer_distance,
-                                                         verbose         = verbose)
+    if EE_find_matching_template:
+        detected_df_list = []
+        proxy_locations_df_list = []
+        principal_points_list = []
+        distances_list = []
+        intersection_angles_list = []
+        
+        # find matching EE template based on roll name
+        rolls = sorted(list(set([pathlib.Path(i).stem[:-4] for i in images])))
+        template_dirs = [t for t in pathlib.Path(template_directory).iterdir() if t.is_dir()]
+        
+        for r in rolls:
+            template_dir = None
+            images_tmp = [img for img in images if r in img.stem]
+            for t in template_dirs:
+                if r in t.as_posix():
+                    template_dir = t.as_posix()
+            if not template_dir:
+                print('No matching templates found for',r,'in provided template directory')
+                sys.exit(1) 
+            
+            print('Templates found for roll',r)
+            images_tmp = [img.as_posix() for img in images if r in img.stem]
+            templates = hipp.core.load_midside_fiducial_proxy_templates(template_dir)
+            detected_df = hipp.core.iter_detect_fiducial_proxies(images_tmp,
+                                                                 templates,
+                                                                 buffer_distance = buffer_distance,
+                                                                 verbose         = verbose)
+            
 
-    proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
-                                                               threshold_px = threshold_px,
-                                                               missing_proxy = missing_proxy)
+            proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
+                                                                       threshold_px = threshold_px,
+                                                                       missing_proxy = missing_proxy)
+            
+            result = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
+                                                                    verbose=verbose)
 
-    principal_points, distances, intersection_angles = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
-                                                                                                      verbose=verbose)
-    if np.isnan(np.nanmin(distances)):
-        sys.exit('Could not compute distance between any fiducial proxies and principal point. Detection likely failed. Check your inputs.')
+            principal_points, distances, intersection_angles = result
+
+            if np.isnan(np.nanmin(distances)):
+                print("""Could not compute distance between any fiducial proxies and principal point. 
+                Detection likely failed. Check your inputs.""")
+                sys.exit(1)
+                
+            image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+            print("Cropping images to square with dimensions", str(image_square_dim))
+            hipp.core.iter_crop_image_from_file(images_tmp,
+                                                principal_points,
+                                                image_square_dim,
+                                                output_directory = output_directory,
+                                                buffer_distance  = buffer_distance,
+                                                verbose = verbose)
+
+                
+            if qc_plots:
+                print("Plotting proxy detection QC plots at", qc_plots_output_directory)
+                hipp.plot.iter_plot_proxies(images_tmp,
+                                            proxy_locations_df,
+                                            principal_points,
+                                            buffer_distance  = buffer_distance,
+                                            output_directory = qc_plots_output_directory,
+                                            verbose=verbose)
+                      
+            detected_df_list.append(detected_df)
+            proxy_locations_df_list.append(proxy_locations_df)
+            principal_points_list.extend(principal_points)
+            distances_list.extend(distances)
+            intersection_angles_list.extend(intersection_angles)
+                      
+        detected_df = pd.concat(detected_df_list)
+        proxy_locations_df = pd.concat(proxy_locations_df_list)
+        principal_points = principal_points_list
+        distances = distances_list
+        intersection_angles = intersection_angles_list
+        
     
+              
+    else:
+        images = [img.as_posix() for img in images]
+        templates = hipp.core.load_midside_fiducial_proxy_templates(template_directory)
+        detected_df = hipp.core.iter_detect_fiducial_proxies(images,
+                                                             templates,
+                                                             buffer_distance = buffer_distance,
+                                                             verbose         = verbose)
+
+        proxy_locations_df = hipp.core.nan_offset_fiducial_proxies(detected_df,
+                                                                   threshold_px = threshold_px,
+                                                                   missing_proxy = missing_proxy)
+        result = hipp.core.compute_principal_point_from_proxies(proxy_locations_df,
+                                                                verbose=verbose)
+        principal_points, distances, intersection_angles = result
+        image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+        print("Cropping images to square with dimensions", str(image_square_dim))
+        hipp.core.iter_crop_image_from_file(images,
+                                            principal_points,
+                                            image_square_dim,
+                                            output_directory = output_directory,
+                                            buffer_distance  = buffer_distance,
+                                            verbose = verbose)
+        if np.isnan(np.nanmin(distances)):
+            print("""Could not compute distance between any fiducial proxies and principal point. 
+            Detection likely failed. Check your inputs.""")
+            sys.exit(1)
+        if qc_plots:
+            print("Plotting proxy detection QC plots at", qc_plots_output_directory)
+            hipp.plot.iter_plot_proxies(images,
+                                        proxy_locations_df,
+                                        principal_points,
+                                        buffer_distance  = buffer_distance,
+                                        output_directory = qc_plots_output_directory,
+                                        verbose=verbose)      
     if qc_df:
         print("Saving proxy detection QC dataframes to", qc_df_output_directory)
         p = pathlib.Path(qc_df_output_directory)
@@ -365,42 +463,8 @@ def preprocess_with_fiducial_proxies(image_directory,
         pd.DataFrame(principal_points).to_pickle(os.path.join(qc_df_output_directory,'principal_points.pd'))
         pd.DataFrame(distances).to_pickle(os.path.join(qc_df_output_directory,'distances.pd'))
         pd.DataFrame(intersection_angles).to_pickle(os.path.join(qc_df_output_directory,'intersection_angles.pd'))
-    
-    if qc_plots:
-        print("Plotting proxy detection QC plots at", qc_plots_output_directory)
-        hipp.plot.iter_plot_proxies(images,
-                                    proxy_locations_df,
-                                    principal_points,
-                                    buffer_distance  = buffer_distance,
-                                    output_directory = qc_plots_output_directory,
-                                    verbose=verbose)
-    
-    image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
-    
-#     if not image_square_dim:
-        
-#         if not missing_proxy:
-#             image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
-                
-#         else:
-#             # get image dimensions and subtract principal points to get minimal viable cropping distance,
-#             # given entirely missing side (and fiducial proxy) for image set.
-#             y,x = cv2.imread(images[0], cv2.IMREAD_GRAYSCALE).shape
-#             df_tmp = pd.DataFrame(principal_points)
-#             a = int(round((y - df_tmp.iloc[:,0]).min()))
-#             b = int(round((x - df_tmp.iloc[:,1]).min()))
-#             if a > b:
-#                 image_square_dim = b*2
-#             else:
-#                 image_square_dim = a*2
-    print("Cropping images to square with dimensions", str(image_square_dim))
 
-    hipp.core.iter_crop_image_from_file(images,
-                                        principal_points,
-                                        image_square_dim,
-                                        output_directory = output_directory,
-                                        buffer_distance  = buffer_distance,
-                                        verbose = verbose)
+    
     return image_square_dim
                                         
                                         
