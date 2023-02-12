@@ -8,6 +8,9 @@ import pandas as pd
 import pathlib
 import psutil
 import shutil
+from tqdm import tqdm
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 import hipp.core
 import hipp.image
@@ -149,7 +152,8 @@ def compute_principal_point_from_proxies(df, verbose=True):
         
     return principal_points, distances, intersection_angles
                     
-def create_fiducial_template(image_file, 
+def create_fiducial_template(image_file,
+                             df = None,
                              output_directory = 'fiducials',
                              output_file_name='fiducial.tif',
                              distance_around_fiducial=100):
@@ -159,7 +163,8 @@ def create_fiducial_template(image_file,
     
     image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
 
-    df = hipp.tools.point_picker(image_file)
+    if isinstance(df,type(None)):
+        df = hipp.tools.point_picker(image_file)
 
     fiducial = (df.x[0],df.y[0])
     
@@ -376,8 +381,15 @@ def detect_fiducial_proxies(image_file,
                             buffer_distance=250):
 
     image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
-#     image_array = hipp.image.img_linear_stretch(image_array)
-#     image_array = hipp.image.threshold_and_add_noise(image_array)
+    
+    n, bins, patches = plt.hist(image_array.ravel()[::40],bins=256,range=(0,256))
+    p = find_peaks(n,prominence=10, width=1, height=n.max()/3)
+    threshold = p[1]['right_bases'][0]
+    image_array = hipp.image.threshold_and_add_noise(image_array, threshold=threshold)
+    
+    image_array = hipp.image.clahe_equalize_image(image_array)
+    image_array = hipp.image.img_linear_stretch(image_array)
+    
     image_array = hipp.core.pad_image(image_array,
                                       buffer_distance = buffer_distance)
     windows = hipp.core.define_midside_windows(image_array)
@@ -388,8 +400,15 @@ def detect_fiducial_proxies(image_file,
 
     for index, slice_array in enumerate(slices):
         template = templates[index]
-        # template = hipp.image.img_linear_stretch(template.copy())
-        # template = hipp.image.threshold_and_add_noise(template.copy())
+        
+#         n, bins, patches = plt.hist(template.ravel()[::40],bins=256,range=(0,256))
+#         p = find_peaks(n,prominence=10, width=1, height=n.max()/3)
+#         threshold = p[1]['right_bases'][0]
+#         template = hipp.image.threshold_and_add_noise(template.copy(), threshold=threshold)
+    
+        template = hipp.image.clahe_equalize_image(template.copy())
+        template = hipp.image.img_linear_stretch(template.copy())
+        
         match_location, quality_score = hipp.core.match_template(slice_array,template)
         match = (windows[index][0] + match_location[0],
                  windows[index][2] + match_location[1])
@@ -537,36 +556,38 @@ def iter_crop_image_from_file(images,
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
 
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
-    
-    future = {pool.submit(hipp.core.crop_image_from_file,
-                          img_pp,
-                          image_square_dim,
-                          buffer_distance=buffer_distance,
-                          output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
-    results=[]
-    for f in concurrent.futures.as_completed(future):
-        r = f.result()
-        if verbose:
-            print("Cropped image at:", r)
+    with tqdm(total=len(images)) as pbar:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True)-1)
+
+        future = {pool.submit(hipp.core.crop_image_from_file,
+                              img_pp,
+                              image_square_dim,
+                              buffer_distance=buffer_distance,
+                              output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
+        results=[]
+        for f in concurrent.futures.as_completed(future):
+            r = f.result()
+            pbar.update(1)
+    print("Cropped images at:",output_directory)
 
 def iter_detect_fiducial_proxies(images,
                                  templates,
                                  buffer_distance=250,
                                  verbose=False):
-
     print("Detecting fiducial proxies...")
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True))
-    future = {pool.submit(hipp.core.detect_fiducial_proxies,
-                          image_file,
-                          templates,
-                          buffer_distance=buffer_distance): image_file for image_file in images}
-    results=[]
-    for f in concurrent.futures.as_completed(future):
-        r = f.result()
-        if verbose:
-            print("Detected fiducial proxy positions for:", r[2])
-        results.append(r)
+    with tqdm(total=len(images)) as pbar:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=psutil.cpu_count(logical=True)-1)
+        future = {pool.submit(hipp.core.detect_fiducial_proxies,
+                              image_file,
+                              templates,
+                              buffer_distance=buffer_distance): image_file for image_file in images}
+        results=[]
+        for f in concurrent.futures.as_completed(future):
+            r = f.result()
+            if verbose:
+                print("Detected fiducial proxy positions for:", r[2])
+            results.append(r)
+            pbar.update(1)
     df = pd.DataFrame(results,columns=['match_locations',
                                        'scores',
                                        'file_names']).sort_values(by=['file_names']).reset_index(drop=True)
