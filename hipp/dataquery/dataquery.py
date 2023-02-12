@@ -12,6 +12,7 @@ import sys
 import time
 import urllib
 import shutil
+from tqdm import tqdm
 
 import hipp.io
 import hipp.utils
@@ -36,16 +37,17 @@ def download_image(output_directory,
     return output_file
 
 def thread_downloads(output_directory, urls, file_names, max_workers=5):
-    
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-    future_to_url = {pool.submit(download_image,
-                                 output_directory,
-                                 x): x for x in zip(urls, file_names)}
-    results=[]
-    for future in concurrent.futures.as_completed(future_to_url):
-        r = future.result()
-        results.append(r)
-        print('Download complete for:',r)
+    with tqdm(total=len(urls)) as pbar:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        future_to_url = {pool.submit(download_image,
+                                     output_directory,
+                                     x): x for x in zip(urls, file_names)}
+        results=[]
+        for future in concurrent.futures.as_completed(future_to_url):
+            r = future.result()
+            results.append(r)
+            pbar.update(1)
+#             print('Download complete for:',r)
 
 def EE_download_images_to_disk(
     apiKey,
@@ -55,96 +57,105 @@ def EE_download_images_to_disk(
     images_directory_suffix              = 'raw_images',
     calibration_reports_directory_suffix = 'calibration_reports',
     keep_calibration_file_per_image      = False,
-    max_workers = 5
+    max_workers = 5,
+    invert_color = False,
+    overwrite = False,
 ):
 
-    urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
+    urls = []
+    filenames = []
+    
+    r = EE_stageForDownload(apiKey, entityIds, label = label)
+    if all(i is None for i in r):
+        return None, None, None
+    
+    urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med = r
+    
 
-    # Make sure we are only downloading the files we requested.
-    # This can probably be addressed within EE_stageForDownload, but has proven tricky.
-    if set([f.split('.')[0] for f in file_names]) != set(entityIds):
-        print('Filtering staged file names.')
-        urls_and_file_names = zip(urls, file_names)
-        urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
-        if len(urls_and_file_names) != len(entityIds):
-            print('Not all files staged yet. Retrying in 30 seconds.')
+    
+    c = 0
+    while c!=4:
+        if len(entityIds) == len(filenames_hi):
+            c=4
+        elif len(entityIds) == len(filenames_med):
+            c=4
+        elif len(entityIds) > len(filenames_hi) or len(entityIds) > len(filenames_med):
+            print('Not all files staged yet. Retry in 30 seconds.')
             time.sleep(30)
-            urls, file_names = EE_stageForDownload(apiKey, entityIds, label = label)
-            urls_and_file_names = zip(urls, file_names)
-            urls_and_file_names = [(url, filename) for url, filename in urls_and_file_names if filename.split('.')[0] in entityIds]
-            
-        elif len(urls_and_file_names) == 0:
-            print("Nothing left after filtering. Something went wrong. Please retry.")
-            sys.exit()
-        
-        print('Remaining files after filtering:',len(urls_and_file_names))
-        if len(urls_and_file_names) != len(entityIds):
-            print("Please retry again later in case staging files is taking longer than expected.")
-        urls, file_names = zip(*urls_and_file_names)
-    
-    # Download one calibration report per roll.
-    # All images follow the following format as per https://lta.cr.usgs.gov/DD/aerial_single_frame.html
-    '''
-    Format:
-        DDAPPPPPRRRFFFF
-        DD = Data set designator (AR)
-        A = Agency
-        P = Project
-        R = Roll
-        F = Frame
-    Example:
-        AR5750022260121
-    '''
-    # Presumably all images in the same roll underwent the same calibration, so we remove redundant 
-    # calibration files and keep only one instance per roll. It is possible that the same roll 
-    # contains images collectectd with different cameras.
-    if not keep_calibration_file_per_image:
-        print('\nDownloading calibration report for roll.')
-        urls_and_file_names_df = pd.DataFrame({"urls":urls, 
-                                       "file_names":[f[:11]+'.pdf' if f[-3:] == 'pdf' else f for f in file_names]})
-        urls_and_file_names_df = urls_and_file_names_df.drop_duplicates(subset='file_names')
-        urls = urls_and_file_names_df['urls'].tolist()
-        file_names = urls_and_file_names_df['file_names'].tolist()
+            print('Retry',str(c+1)+'/4')
+            r = EE_stageForDownload(apiKey, entityIds, label = label)
+            urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med = r
+            if c+1 == 4:
+                #TODO log these instances and retry later
+                print('Max retries reached.')
+                print('Moving on.')
+            c+=1
+        else:
+            c=4
+
+    urls.extend(urls_cal)
+    filenames.extend(filenames_cal)
+
+    if len(filenames_med) > len(filenames_hi):
+        print('More images were returned at medium resolution.')
+        print('Proceeding with medium resolution images only.')
+        urls.extend(urls_med)
+        filenames.extend(filenames_med)
+        pixel_pitch = 0.065
+    elif filenames_hi:
+        print('Downloading high resolution images only.')
+        urls.extend(urls_hi)
+        filenames.extend(filenames_hi)
+        pixel_pitch = 0.025
+    print('Pixel pitch:',str(pixel_pitch))
+
+    if filenames: 
+        images_directory              = os.path.join(output_directory, 
+                                                     images_directory_suffix)
+        calibration_reports_directory = os.path.join(output_directory,
+                                                     calibration_reports_directory_suffix) 
+
+        if not pathlib.Path(images_directory).is_dir() or overwrite:
+            pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
+            print('Threading image downloads with', max_workers, 'workers.') 
+            print('Temporary files written to', output_directory) 
+            thread_downloads(
+                output_directory, 
+                urls, 
+                filenames, 
+                max_workers=max_workers
+            )                       
+
+            images = sorted(list(pathlib.Path(output_directory).glob('*tif*')))
+            print(len(images), 'images downloaded.')
+            if images[0].as_posix()[-7:] == '.tif.gz':
+                hipp.io.gzip_dir(output_directory)
+
+            hipp.io.move_files(output_directory, images_directory, '.tif')
+            hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
+
+            print('Images in:', images_directory)
+            print('Calibration reports in:', calibration_reports_directory)
+
+            print('Correcting origin for all images.\n')
+            def fix_grid_org(f):
+                im = cv2.imread(f)
+                if invert_color:
+                    im = np.max(im) - im
+                cv2.imwrite(f, im)
+
+            original_raw_tif_files = glob.glob(os.path.join(images_directory, '*.tif'))
+            with tqdm(total=len(urls)) as pbar:
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+                reorged_futures = {pool.submit(fix_grid_org, x): x for x in original_raw_tif_files}
+                for future in concurrent.futures.as_completed(reorged_futures):
+                    r = future.result()
+                    pbar.update(1)
+        return images_directory, calibration_reports_directory, pixel_pitch
+
     else:
-        print('\nDownloading one calibration report per image...')                      
-    
-    if file_names:                                                        
-        pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
-        print('Threading image downloads with', max_workers, 'workers.') 
-        thread_downloads(
-            output_directory, 
-            urls, 
-            file_names, 
-            max_workers=max_workers
-        ) 
-        
-        images_directory              = os.path.join(output_directory, images_directory_suffix)
-        calibration_reports_directory = os.path.join(output_directory, calibration_reports_directory_suffix)                       
-        
-        print(len(glob.glob(os.path.join(output_directory,'*.tif.gz'))), 'images downloaded.')
-        hipp.io.gzip_dir(output_directory)
-
-        hipp.io.move_files(output_directory, images_directory, '.tif')
-        hipp.io.move_files(output_directory, calibration_reports_directory, '.pdf')
-        
-        print('Images in:', images_directory)
-        print('Calibration reports in:', calibration_reports_directory)
-
-        print('Correcting origin for all images.\n')
-        def fix_grid_org(f):
-            im = cv2.imread(f)
-            cv2.imwrite(f, im)
-        original_raw_tif_files = glob.glob(os.path.join(images_directory, '*.tif'))
-        pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
-        reorged_futures = {pool.submit(fix_grid_org, x): x for x in original_raw_tif_files}
-        for future in concurrent.futures.as_completed(reorged_futures):
-            r = future.result()
-        return images_directory, calibration_reports_directory
-
-    
-    else:
-        print("Something went wrong.")
-        return None, None
+        print("Something went wrong.",'\nNo images staged after 2 minutes.')
+        return None, None, None
     
 def EE_convert_api_responses_to_dataframe(scenes):
     # Reference: https://lta.cr.usgs.gov/DD/aerial_single_frame.html
@@ -262,10 +273,10 @@ def EE_pre_select_images(apiKey,
                                                 'acquisitionFilter' : acquisitionFilter},
                                'metadataType': metadataType}
     scenes = EE_sendRequest(serviceUrl + "scene-search", datasetSearchParameters, apiKey)
-    print('\nRecords returned:', scenes['recordsReturned'])
+    print('Records returned:', scenes['recordsReturned'])
     if scenes['recordsReturned'] == maxResults:
-        print("\nmaxResults set to:", maxResults, 
-              '\nIncrease this parameter to obtain additional records. API max 50,000.')
+        print("maxResults set to:", maxResults, 
+              'Increase this parameter to obtain additional records. API max 50,000.')
     
     results_df = EE_convert_api_responses_to_dataframe(scenes['results'])
     return results_df
@@ -309,7 +320,8 @@ def EE_stageForDownload(apiKey,
                         entityIds,
                         label        = 'test_download',
                         datasetName  = 'aerial_combin',
-                        serviceUrl   = 'https://m2m.cr.usgs.gov/api/api/json/stable/'):
+                        serviceUrl   = 'https://m2m.cr.usgs.gov/api/api/json/stable/',
+                        ):
     
     
     """Stage downloads using the EarthExplorer api and a given list of entityIds
@@ -349,7 +361,7 @@ def EE_stageForDownload(apiKey,
         requestedDownloadsCount = len(downloads)
         # set a label for the download request
         payload = {'downloads' : downloads,
-                                        'label' : label}
+                   'label' : label}
         # Call the download to get the direct download urls
         requestResults = EE_sendRequest(serviceUrl + "download-request", payload, apiKey)          
                         
@@ -369,10 +381,11 @@ def EE_stageForDownload(apiKey,
                 downloadIds.append(download['downloadId'])
                 ee_requests.append(download)
                 
-            # Didn't get all of the requested downloads, call the download-retrieve method again probably after 30 seconds
+            # Didn't get all of the requested downloads, 
+            # call the download-retrieve method again probably after 30 seconds
             while len(downloadIds) < requestedDownloadsCount: 
                 preparingDownloads = requestedDownloadsCount - len(downloadIds)
-                print("\n", preparingDownloads, "images are not staged. Retry in 30 seconds.\n")
+                print(preparingDownloads, "images are not staged. Retry in 30 seconds.\n")
                 time.sleep(30)
                 moreDownloadUrls = EE_sendRequest(serviceUrl + "download-retrieve", payload, apiKey)
                 for download in moreDownloadUrls['available']:                            
@@ -386,32 +399,80 @@ def EE_stageForDownload(apiKey,
                 ee_requests.append(download)
 #         print("All images are staged for download.")
 
-        filtered_reqs = [
+        filtered_reqs_cal = [
             rq for rq in ee_requests
-    #         print(rq['collectionName'])
-            if rq['collectionName'] == 'Aerial Photo Single Frames' and rq['productName'] in ['Camera Calibration File', 'High Resolution Product'] # 'Medium Resolution Product'
+            if rq['collectionName'] == 'Aerial Photo Single Frames' \
+            and rq['productName'] == 'Camera Calibration File' # 
         ]
-
+    
+        filtered_reqs_hi = [
+            rq for rq in ee_requests
+            if rq['collectionName'] == 'Aerial Photo Single Frames' \
+            and rq['productName'] == 'High Resolution Product' # 
+        ]
+        
+        filtered_reqs_med = [
+            rq for rq in ee_requests
+            if rq['collectionName'] == 'Aerial Photo Single Frames' \
+            and rq['productName'] == 'Medium Resolution Product' # 
+        ]
+        
+        
         urls = []
         filenames = []
-        for req in filtered_reqs:
-            if req['productName'] =='Camera Calibration File':
-                name = req['entityId'] + '.pdf'
-            else:
-                name = req['entityId'] + '.tif.gz'
-            urls.append(req['url'])
-            filenames.append(name)
+    
+#       Download one calibration report per roll.
+#       All images follow the following format as per https://lta.cr.usgs.gov/DD/aerial_single_frame.html
+#       Format:
+#           DDAPPPPPRRRFFFF
+#           DD = Data set designator (AR)
+#           A = Agency
+#           P = Project
+#           R = Roll
+#           F = Frame
+#       Example:
+#           AR5750022260121
+        
+        urls_cal = []
+        filenames_cal = []
+        for req in filtered_reqs_cal:
+            if req['entityId'] in entityIds:
+                name = req['entityId'][:11] + '.pdf' #one per roll
+                if name not in filenames_cal:
+                    urls_cal.append(req['url'])
+                    filenames_cal.append(name)
 
-        return urls, filenames
+
+        urls_hi = []
+        filenames_hi = []
+        for req in filtered_reqs_hi:
+            if req['entityId'] in entityIds:
+                if 'NAG' in req['entityId']:
+                    name = req['entityId'] + '.tif' #NAGAP images aren't zipped
+                else:
+                    name = req['entityId'] + '.tif.gz'
+                urls_hi.append(req['url'])
+                filenames_hi.append(name)
+            
+        urls_med = []
+        filenames_med = []
+        for req in filtered_reqs_med:
+            if req['entityId'] in entityIds:
+                name = req['entityId'] + '.tif'
+                urls_med.append(req['url'])
+                filenames_med.append(name)
+        
+        print('Found:')
+        print('  ',len(filenames_cal),'calibration reports')
+        print('  ',len(filenames_hi),'hi-res (25 micron) scans')
+        print('  ',len(filenames_med),'med-res (65 micron) scans')
+        
+        return urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med
+    
     else:
-        print("\nNo records available for download")
-        for product in downloadOptions:
-            if product['available'] == True:
-                print(product['entityId'], product['productName'], 'available for download')
-            else:
-                print(product['entityId'], product['productName'], 'not available for download')
-                
-        sys.exit(1)
+        print("None available for download")
+        return None, None, None, None, None, None
+
 
 ## ARCTICDATA.IO
 
