@@ -60,38 +60,44 @@ def EE_download_images_to_disk(
     max_workers = 5,
     invert_color = False,
     overwrite = False,
+    prime_for_download_later = False,
 ):
 
     urls = []
     filenames = []
     
     r = EE_stageForDownload(apiKey, entityIds, label = label)
+    
+    if prime_for_download_later:
+        return None, None, None
+    
     if all(i is None for i in r):
         return None, None, None
     
     urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med = r
     
 
-    
     c = 0
-    while c!=4:
+    retries = 4
+    wait_time = 30
+    while c!=retries:
         if len(entityIds) == len(filenames_hi):
-            c=4
-        elif len(entityIds) == len(filenames_med):
-            c=4
+            c=retries
+        elif len(entityIds) == len(filenames_med) and c==retries:
+            c=retries
         elif len(entityIds) > len(filenames_hi) or len(entityIds) > len(filenames_med):
-            print('Not all files staged yet. Retry in 30 seconds.')
-            time.sleep(30)
-            print('Retry',str(c+1)+'/4')
+            print('Not all files staged yet. Retry in',str(wait_time),'seconds.')
+            time.sleep(wait_time)
+            print('Retry',str(c+1)+'/'+str(retries))
             r = EE_stageForDownload(apiKey, entityIds, label = label)
             urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med = r
-            if c+1 == 4:
+            if c+1 == retries:
                 #TODO log these instances and retry later
                 print('Max retries reached.')
                 print('Moving on.')
             c+=1
         else:
-            c=4
+            c=retries
 
     urls.extend(urls_cal)
     filenames.extend(filenames_cal)
@@ -107,9 +113,9 @@ def EE_download_images_to_disk(
         urls.extend(urls_hi)
         filenames.extend(filenames_hi)
         pixel_pitch = 0.025
-    print('Pixel pitch:',str(pixel_pitch))
 
-    if filenames: 
+    if filenames_med or filenames_hi: 
+        print('Pixel pitch:',str(pixel_pitch))
         images_directory              = os.path.join(output_directory, 
                                                      images_directory_suffix)
         calibration_reports_directory = os.path.join(output_directory,
@@ -137,7 +143,11 @@ def EE_download_images_to_disk(
             print('Images in:', images_directory)
             print('Calibration reports in:', calibration_reports_directory)
 
-            print('Correcting origin for all images.\n')
+            if invert_color:
+                print('Correcting origin for all images.')
+                print('Inverting color for all images.\n')
+            else:
+                print('Correcting origin for all images.\n')
             def fix_grid_org(f):
                 im = cv2.imread(f)
                 if invert_color:
