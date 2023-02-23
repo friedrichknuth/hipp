@@ -87,9 +87,11 @@ def compute_principal_point_from_proxies(df, verbose=True):
     distances = []
     principal_points = []
     intersection_angles = []
+    verbose=False
 
     for index, row in df.iterrows():
-        print('Computing principal point for:', row['file_names'])
+        if verbose:
+            print('Computing principal point for:', row['file_names'])
         p1 = (row['left_y'], row['left_x'])
         p2 = (row['right_y'], row['right_x'])
         principal_point_LR = hipp.math.midpoint(p1[1], p1[0], p2[1], p2[0])
@@ -126,6 +128,7 @@ def compute_principal_point_from_proxies(df, verbose=True):
                     principal_point_TB = (row['right_y'], row['bottom_x'])
                 
         if np.isnan(principal_point_LR).any() and np.isnan(principal_point_TB).any():
+#             if verbose:
             print('WARNING: Unable to estimate principal point for:', row['file_names'])
             print('WARNING: Using mean principal point estimate from image set instead.')
             principal_point = (np.nan,np.nan)
@@ -141,10 +144,10 @@ def compute_principal_point_from_proxies(df, verbose=True):
         intersection_angle = hipp.qc.compute_opposing_fiducial_intersection_angle(proxy_locations)
         intersection_angles.append(intersection_angle)
         if verbose:
-            if not np.isnan(intersection_angle):
+            if not np.isnan(intersection_angle) and verbose:
                 print('Intersection angle at principal point:', str(intersection_angle))
-            else:
-                print('WARNING: Insufficient fiducial proxies (<4) detected to compute intersection angle.')
+            elif verbose:
+                print('Insufficient fiducial proxies (<4) detected to compute intersection angle.')
                 
     # Use mean principal point estimate from image set to replace instance where < 2 proxies were found.
     df_tmp = pd.DataFrame(principal_points)
@@ -182,13 +185,28 @@ def create_fiducial_template(image_file,
 def create_midside_fiducial_proxies_template(image_file, 
                                              df = None,
                                              output_directory = 'input_data/fiducials',
-                                             buffer_distance = 250):
+                                             buffer_distance = 250,
+                                             threshold= 50):
     
     p = pathlib.Path(output_directory)
     p.mkdir(parents=True, exist_ok=True)
     
     image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+    
+    n, bins, patches = plt.hist(image_array.ravel()[::40],bins=256,range=(0,256))
+#     plt.close()
+    
+#     p = find_peaks(n,prominence=1, width=1, height=n.max()/3)
+#     p = find_peaks(n,prominence=100,width=1)
+    
+#     threshold = p[1]['right_bases'][0]
+#     print(threshold)
+
+    plt.vlines(threshold,0,n.max(),'r')
+    image_array = hipp.image.threshold_and_add_noise(image_array, threshold=threshold)
+    image_array = hipp.image.clahe_equalize_image(image_array)
     image_array = hipp.image.img_linear_stretch(image_array)
+    
     image_array = hipp.core.pad_image(image_array,
                                       buffer_distance = buffer_distance)
     if isinstance(df,type(None)):
@@ -366,6 +384,7 @@ def detect_fiducials(slices,
     quality_scores = []
 
     for index, slice_array in enumerate(slices):
+        
         match_location, quality_score = hipp.core.match_template(slice_array,
                                                                  template_array)
                                          
@@ -381,15 +400,20 @@ def detect_fiducial_proxies(image_file,
                             buffer_distance=250):
 
     image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
+#     image_array = cv2.imread(image_file,cv2.IMREAD_COLOR)
+#     image_array = image_array[:,:,0]
     
-    n, bins, patches = plt.hist(image_array.ravel()[::40],bins=256,range=(0,256))
-    p = find_peaks(n,prominence=10, width=1, height=n.max()/3)
-    threshold = p[1]['right_bases'][0]
-    image_array = hipp.image.threshold_and_add_noise(image_array, threshold=threshold)
+#     n, bins, patches = plt.hist(image_array.ravel()[::40],bins=256,range=(0,256))
+#     plt.close()
+#     p = find_peaks(n,prominence=10, width=1, height=n.max()/3)
+#     threshold = p[1]['right_bases'][0]
+#     image_array = hipp.image.threshold_and_add_noise(image_array, threshold=threshold)
     
     image_array = hipp.image.clahe_equalize_image(image_array)
     image_array = hipp.image.img_linear_stretch(image_array)
+#     image_array = hipp.image.threshold_and_add_noise(image_array)
     
+#     print('test')
     image_array = hipp.core.pad_image(image_array,
                                       buffer_distance = buffer_distance)
     windows = hipp.core.define_midside_windows(image_array)
@@ -402,12 +426,14 @@ def detect_fiducial_proxies(image_file,
         template = templates[index]
         
 #         n, bins, patches = plt.hist(template.ravel()[::40],bins=256,range=(0,256))
+#         plt.close()
 #         p = find_peaks(n,prominence=10, width=1, height=n.max()/3)
 #         threshold = p[1]['right_bases'][0]
 #         template = hipp.image.threshold_and_add_noise(template.copy(), threshold=threshold)
     
-        template = hipp.image.clahe_equalize_image(template.copy())
-        template = hipp.image.img_linear_stretch(template.copy())
+#         template = hipp.image.clahe_equalize_image(template.copy())
+#         template = hipp.image.img_linear_stretch(template.copy())
+#         template = hipp.image.threshold_and_add_noise(template.copy())
         
         match_location, quality_score = hipp.core.match_template(slice_array,template)
         match = (windows[index][0] + match_location[0],
@@ -584,8 +610,6 @@ def iter_detect_fiducial_proxies(images,
         results=[]
         for f in concurrent.futures.as_completed(future):
             r = f.result()
-            if verbose:
-                print("Detected fiducial proxy positions for:", r[2])
             results.append(r)
             pbar.update(1)
     df = pd.DataFrame(results,columns=['match_locations',
