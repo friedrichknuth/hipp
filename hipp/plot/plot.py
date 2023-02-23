@@ -143,7 +143,7 @@ def plot_proxies(data,
     path, name, ext = hipp.io.split_file(image_file)
     
     image_array = cv2.imread(image_file, cv2.IMREAD_GRAYSCALE)
-    
+        
     fig,ax = plt.subplots(figsize=(10,10))
     ax.imshow(image_array,cmap='gray')
     ax.scatter(proxies_x,proxies_y,color='lime',marker='.')
@@ -154,7 +154,6 @@ def plot_proxies(data,
     
     fig.savefig(output_file_name)
     plt.close(fig)
-    print("Fiducial proxy QC plot at:", output_file_name)
     return output_file_name
 
 ## some helper functions
