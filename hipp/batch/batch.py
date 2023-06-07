@@ -321,6 +321,8 @@ def preprocess_with_fiducial_proxies(image_directory,
                                      template_directory,
                                      buffer_distance=250,
                                      threshold_px = 50,
+                                     stretch_histogram = True,
+                                     clahe_enhancement = True,
                                      image_square_dim = None,
                                      output_directory = 'input_data/cropped_images',
                                      verbose=True,
@@ -394,6 +396,8 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                 image_square_dim,
                                                 output_directory = output_directory,
                                                 buffer_distance  = buffer_distance,
+                                                stretch_histogram = stretch_histogram,
+                                                clahe_enhancement = clahe_enhancement,
                                                 verbose = verbose)
 
                 
@@ -441,6 +445,8 @@ def preprocess_with_fiducial_proxies(image_directory,
                                             image_square_dim,
                                             output_directory = output_directory,
                                             buffer_distance  = buffer_distance,
+                                            stretch_histogram = stretch_histogram,
+                                            clahe_enhancement = clahe_enhancement,
                                             verbose = verbose)
         if np.isnan(np.nanmin(distances)):
             print("""Could not compute distance between any fiducial proxies and principal point. 

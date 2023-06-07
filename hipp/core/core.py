@@ -280,7 +280,9 @@ def crop_fiducial(image_file,
 def crop_image_from_file(image_file_principal_point_tuple,
                          image_square_dim,
                          output_directory = 'input_data/cropped_images',
-                         buffer_distance = 250):
+                         buffer_distance = 250,
+                         stretch_histogram = True,
+                         clahe_enhancement = True):
     
     image_file, principal_point = image_file_principal_point_tuple
     
@@ -292,8 +294,10 @@ def crop_image_from_file(image_file_principal_point_tuple,
                                               principal_point,
                                               image_square_dim = image_square_dim)
 
-    image_array = hipp.image.clahe_equalize_image(image_array)
-    image_array = hipp.image.img_linear_stretch(image_array)
+    if clahe_enhancement:
+        image_array = hipp.image.clahe_equalize_image(image_array)
+    if stretch_histogram:
+        image_array = hipp.image.img_linear_stretch(image_array)
     
     path, basename, extension = hipp.io.split_file(image_file)
     out = os.path.join(output_directory,basename+extension)
@@ -413,7 +417,6 @@ def detect_fiducial_proxies(image_file,
     image_array = hipp.image.img_linear_stretch(image_array)
 #     image_array = hipp.image.threshold_and_add_noise(image_array)
     
-#     print('test')
     image_array = hipp.core.pad_image(image_array,
                                       buffer_distance = buffer_distance)
     windows = hipp.core.define_midside_windows(image_array)
@@ -575,7 +578,9 @@ def iter_crop_image_from_file(images,
                               image_square_dim,
                               output_directory = 'input_data/cropped_images',
                               buffer_distance = 250,
-                              verbose=True):
+                              stretch_histogram = True,
+                              clahe_enhancement = True,
+                              verbose = True):
     
     print("Cropping images...")
     
@@ -589,7 +594,9 @@ def iter_crop_image_from_file(images,
                               img_pp,
                               image_square_dim,
                               buffer_distance=buffer_distance,
-                              output_directory=output_directory): img_pp for img_pp in zip(images, principal_points)}
+                              output_directory=output_directory,
+                              stretch_histogram = stretch_histogram,
+                              clahe_enhancement = clahe_enhancement): img_pp for img_pp in zip(images, principal_points)}
         results=[]
         for f in concurrent.futures.as_completed(future):
             r = f.result()
