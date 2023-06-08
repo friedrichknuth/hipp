@@ -11,6 +11,7 @@ import shutil
 from tqdm import tqdm
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
+import rasterio
 
 import hipp.core
 import hipp.image
@@ -154,7 +155,35 @@ def compute_principal_point_from_proxies(df, verbose=True):
     principal_points = list(df_tmp.fillna(df_tmp.mean().round().astype(int)).astype(int).values)
         
     return principal_points, distances, intersection_angles
-                    
+
+def validate_square_dim(image_files,
+                        buffer_distance,
+                        principal_points,
+                        image_square_dim
+                       ):
+    new_square_dims = []
+
+    for i,v in enumerate(image_files):
+        ds = rasterio.open(v)
+        h = ds.height + buffer_distance *2
+        w = ds.width + buffer_distance *2
+        pp_h = principal_points[i][0] + buffer_distance
+        pp_w = principal_points[i][1] + buffer_distance
+
+        tmp_h = (pp_h + image_square_dim/2)
+        tmp_w = (pp_w + image_square_dim/2)
+
+        if tmp_w > w:
+            new_square_dims.append(image_square_dim - (tmp_w - w))
+        if tmp_h > h:
+            new_square_dims.append(image_square_dim - (tmp_h - h))
+
+    if new_square_dims:
+        new_square_dim = int(np.floor(np.nanmin(new_square_dims)))
+        return new_square_dim
+    else:
+        return None
+    
 def create_fiducial_template(image_file,
                              df = None,
                              output_directory = 'fiducials',

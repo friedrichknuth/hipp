@@ -4,7 +4,7 @@ import numpy as np
 import os
 import sys
 import pandas as pd
-import pathlib
+from pathlib import Path
 from skimage import transform as tf
 
 import hipp.core
@@ -41,7 +41,7 @@ def image_restitution(df_detected,
     # TODO add logging
 
     if transform_image or crop_image:
-        p = pathlib.Path(output_directory)
+        p = Path(output_directory)
         p.mkdir(parents=True, exist_ok=True)
     
     # QC lists
@@ -343,7 +343,7 @@ def preprocess_with_fiducial_proxies(image_directory,
     To read in and examine QC dataframe use pandas.read_pickle('proxy_locations_df.pd'), 
     for example.
     """
-    images = sorted(list(pathlib.Path(image_directory).glob('*tif')))
+    images = sorted(Path(image_directory).glob('*tif'))
     
     if EE_find_matching_template:
         detected_df_list = []
@@ -353,8 +353,8 @@ def preprocess_with_fiducial_proxies(image_directory,
         intersection_angles_list = []
         
         # find matching EE template based on roll name
-        rolls = sorted(list(set([pathlib.Path(i).stem[:-4] for i in images])))
-        template_dirs = [t for t in pathlib.Path(template_directory).iterdir() if t.is_dir()]
+        rolls = sorted(set([Path(i).stem[:-4] for i in images]))
+        template_dirs = [t for t in Path(template_directory).iterdir() if t.is_dir()]
         
         for r in rolls:
             template_dir = None
@@ -390,6 +390,28 @@ def preprocess_with_fiducial_proxies(image_directory,
                 sys.exit(1)
                 
             image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+
+            new_image_square_dim = hipp.core.validate_square_dim(images_tmp,
+                                                                 buffer_distance,
+                                                                 principal_points,
+                                                                 image_square_dim)
+            if new_image_square_dim:
+                msg = '\n'.join(['WARNING: Irregular final image dimensions detected',
+                                 'Likely due to missing fiducial marker on a side of the images.',
+                                 'Check qc plots for:'])
+                print(msg)
+                for i in images_tmp:
+                    print(i)
+                if not missing_proxy:
+                    msg = '\n'.join(['Consider reprocessing by setting missing_proxy option to left, top, right, or bottom',
+                                     'to improve principal point detection.'])
+                    print(msg)
+                else:
+                    print('Missing_proxy set to', missing_proxy)
+                    print('Adjusting final image dimensions to minimum viable size from',
+                          image_square_dim, 'to', new_image_square_dim)
+                    image_square_dim = new_image_square_dim
+            
             print("Cropping images to square with dimensions", str(image_square_dim))
             hipp.core.iter_crop_image_from_file(images_tmp,
                                                 principal_points,
@@ -439,6 +461,28 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                                 verbose=verbose)
         principal_points, distances, intersection_angles = result
         image_square_dim = int(round((np.nanmin(distances))/2))*2 # ensure half is non float for array index slicing
+        
+        new_image_square_dim = hipp.core.validate_square_dim(images,
+                                                             buffer_distance,
+                                                             principal_points,
+                                                             image_square_dim)
+        if new_image_square_dim:
+            msg = '\n'.join(['WARNING: Irregular final image dimensions detected',
+                             'Likely due to missing fiducial marker on a side of the images.',
+                             'Check qc plots for:'])
+            print(msg)
+            for i in images:
+                print(i)
+            if not missing_proxy:
+                msg = '\n'.join(['Consider reprocessing by setting missing_proxy option to left, top, right, or bottom',
+                                 'to improve principal point detection.'])
+                print(msg)
+            else:
+                print('Missing_proxy set to', missing_proxy)
+                print('Adjusting final image dimensions to minimum viable size from',
+                      image_square_dim, 'to', new_image_square_dim)
+                image_square_dim = new_image_square_dim
+                
         print("Cropping images to square with dimensions", str(image_square_dim))
         hipp.core.iter_crop_image_from_file(images,
                                             principal_points,
@@ -462,7 +506,7 @@ def preprocess_with_fiducial_proxies(image_directory,
                                         verbose=verbose)      
     if qc_df:
         print("Saving proxy detection QC dataframes to", qc_df_output_directory)
-        p = pathlib.Path(qc_df_output_directory)
+        p = Path(qc_df_output_directory)
         p.mkdir(parents=True, exist_ok=True)
         detected_df.to_pickle(os.path.join(qc_df_output_directory,'detected_df.pd'))
         proxy_locations_df.to_pickle(os.path.join(qc_df_output_directory,'proxy_locations_df.pd'))
