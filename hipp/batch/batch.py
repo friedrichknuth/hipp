@@ -395,7 +395,17 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                                  buffer_distance,
                                                                  principal_points,
                                                                  image_square_dim)
-            if new_image_square_dim:
+            
+            if new_image_square_dim and missing_proxy:
+                print('Missing_proxy set to', missing_proxy)
+                print('Adjusting final image dimensions to minimum viable size from',
+                      image_square_dim, 'to', new_image_square_dim)
+                print('Check qc plots for:')
+                for i in images_tmp:
+                    print(i)
+                image_square_dim = new_image_square_dim
+                
+            elif new_image_square_dim:
                 msg = '\n'.join(['WARNING: Irregular final image dimensions detected',
                                  'Likely due to missing fiducial marker on a side of the images.',
                                  'Check qc plots for:'])
@@ -406,11 +416,6 @@ def preprocess_with_fiducial_proxies(image_directory,
                     msg = '\n'.join(['Consider reprocessing by setting missing_proxy option to left, top, right, or bottom',
                                      'to improve principal point detection.'])
                     print(msg)
-                else:
-                    print('Missing_proxy set to', missing_proxy)
-                    print('Adjusting final image dimensions to minimum viable size from',
-                          image_square_dim, 'to', new_image_square_dim)
-                    image_square_dim = new_image_square_dim
             
             print("Cropping images to square with dimensions", str(image_square_dim))
             hipp.core.iter_crop_image_from_file(images_tmp,
@@ -466,7 +471,16 @@ def preprocess_with_fiducial_proxies(image_directory,
                                                              buffer_distance,
                                                              principal_points,
                                                              image_square_dim)
-        if new_image_square_dim:
+        if new_image_square_dim and missing_proxy:
+            print('Missing_proxy set to', missing_proxy)
+            print('Adjusting final image dimensions to minimum viable size from',
+                  image_square_dim, 'to', new_image_square_dim)
+            print('Check qc plots for:')
+            for i in images:
+                print(i)
+            image_square_dim = new_image_square_dim
+
+        elif new_image_square_dim:
             msg = '\n'.join(['WARNING: Irregular final image dimensions detected',
                              'Likely due to missing fiducial marker on a side of the images.',
                              'Check qc plots for:'])
@@ -477,11 +491,6 @@ def preprocess_with_fiducial_proxies(image_directory,
                 msg = '\n'.join(['Consider reprocessing by setting missing_proxy option to left, top, right, or bottom',
                                  'to improve principal point detection.'])
                 print(msg)
-            else:
-                print('Missing_proxy set to', missing_proxy)
-                print('Adjusting final image dimensions to minimum viable size from',
-                      image_square_dim, 'to', new_image_square_dim)
-                image_square_dim = new_image_square_dim
                 
         print("Cropping images to square with dimensions", str(image_square_dim))
         hipp.core.iter_crop_image_from_file(images,
