@@ -167,8 +167,8 @@ def validate_square_dim(image_files,
         ds = rasterio.open(v)
         h = ds.height + buffer_distance *2
         w = ds.width + buffer_distance *2
-        pp_h = principal_points[i][0] + buffer_distance
-        pp_w = principal_points[i][1] + buffer_distance
+        pp_h = principal_points[i][0] + buffer_distance/2
+        pp_w = principal_points[i][1] + buffer_distance/2
 
         tmp_h = (pp_h + image_square_dim/2)
         tmp_w = (pp_w + image_square_dim/2)
