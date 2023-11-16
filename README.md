@@ -44,6 +44,12 @@ $ conda activate hipp
 $ pip install -e .
 ```
 
+### Related software
+
+[Historical Structure from Motion (HSfM)](https://github.com/friedrichknuth/hsfm) [![DOI](https://zenodo.org/badge/202800494.svg)](https://zenodo.org/badge/latestdoi/202800494)
+
 ### References
+
+Knuth, F., Shean, D., Bhushan, S., Schwat, E., Alexandrov, O., McNeil, C., Dehecq, A., Florentine, C. and O’Neel, S., 2023. Historical Structure from Motion (HSfM): Automated processing of historical aerial photographs for long-term topographic change analysis. Remote Sensing of Environment, 285, p.113379. [https://doi.org/10.1016/j.rse.2022.113379](https://doi.org/10.1016/j.rse.2022.113379)
 
 Bradski, G. (2000). "The OpenCV Library". Dr. Dobb&#x27;s Journal of Software Tools.
