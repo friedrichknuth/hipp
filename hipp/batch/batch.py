@@ -68,18 +68,18 @@ def image_restitution(df_detected,
     for index, row in df_coords.iterrows():
 
         # convert coordinates to x,y order
-        fiducial_coordinates      = np.array(list(zip(row.values[0::2], row.values[1::2])))
+        fiducial_coordinates      = np.concatenate(list(zip(row.values[0::2], row.values[1::2])))
         fiducial_coordinates      = fiducial_coordinates[:,::-1] 
 
         # extract principal point
         principal_point = np.array(df_detected['principal_point'].iloc[index])
 
         # add prinicpal point to get true fiducial coordinates into image reference system
-        if fiducial_coordinates_true_mm:
+        if np.any(fiducial_coordinates_true_mm):
             fiducial_coordinates_true = fiducial_coordinates_true_px + principal_point
 
 
-        if qc and fiducial_coordinates_true_mm:
+        if qc and np.any(fiducial_coordinates_true_mm):
             # convert coordinates to camera reference system.
             fiducial_coordinates_mm, principal_point_mm = hipp.qc.convert_coordinates(fiducial_coordinates,
                                                                                       principal_point,
