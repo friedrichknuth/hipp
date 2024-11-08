@@ -107,7 +107,7 @@ def EE_download_images_to_disk(
         print('Proceeding with medium resolution images only.')
         urls.extend(urls_med)
         filenames.extend(filenames_med)
-        pixel_pitch = 0.065
+        pixel_pitch = 0.063
     elif filenames_hi:
         print('Downloading high resolution images only.')
         urls.extend(urls_hi)
@@ -475,7 +475,7 @@ def EE_stageForDownload(apiKey,
         print('Found:')
         print('  ',len(filenames_cal),'calibration reports')
         print('  ',len(filenames_hi),'hi-res (25 micron) scans')
-        print('  ',len(filenames_med),'med-res (65 micron) scans')
+        print('  ',len(filenames_med),'med-res (63 micron) scans')
         
         return urls_cal, filenames_cal, urls_hi, filenames_hi, urls_med, filenames_med
     

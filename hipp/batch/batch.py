@@ -63,7 +63,7 @@ def image_restitution(df_detected,
         fiducial_coordinates_true_px[:,1] = fiducial_coordinates_true_px[:,1] * -1
     
     # prepare dataframe with detected coordinates
-    df_coords = df_detected.drop([image_file_name_column_name,'principal_point'], axis=1)
+    df_coords = df_detected.drop([image_file_name_column_name,'principal_point_x','principal_point_y'], axis=1)
     
     for index, row in df_coords.iterrows():
 
@@ -72,7 +72,8 @@ def image_restitution(df_detected,
         fiducial_coordinates      = fiducial_coordinates[:,::-1] 
 
         # extract principal point
-        principal_point = np.array(df_detected['principal_point'].iloc[index])
+        principal_point = np.array((df_detected['principal_point_x'].iloc[index],
+                                    df_detected['principal_point_y'].iloc[index]))
 
         # add prinicpal point to get true fiducial coordinates into image reference system
         if np.any(fiducial_coordinates_true_mm):
