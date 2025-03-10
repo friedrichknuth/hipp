@@ -242,13 +242,13 @@ def EE_convert_api_responses_to_dataframe(scenes):
     return scenes_df
     
 def EE_login(username,
-             password,
+             token,
              m2mhost = 'https://m2m.cr.usgs.gov/api/api/json/stable/'):
 
     data = {'username' : username, 
-            'password' : password}
+            'token' : token}
     
-    url = m2mhost + 'login'
+    url = m2mhost + 'login-token'
     api_key = EE_sendRequest(url, data)
     
     return api_key
