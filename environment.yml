@@ -14,4 +14,5 @@ dependencies:
   - rasterio
   - scikit-image
   - xarray
+  - psutil
 
