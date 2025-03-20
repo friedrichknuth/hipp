@@ -10,6 +10,7 @@ import pathlib
 import rasterio
 import shutil
 import xarray as xr
+import rioxarray
 hv.extension('bokeh')
 
 import hipp.image
@@ -64,7 +65,7 @@ def hv_plot_raster(image_file_name):
     subplot_width  = hipp.tools.scale_down_number(src.shape[0])
     subplot_height = hipp.tools.scale_down_number(src.shape[1])
 
-    da = xr.open_rasterio(src)
+    da = rioxarray.open_rasterio(src)
     
     da.values = hipp.image.img_linear_stretch(da.values)
 
