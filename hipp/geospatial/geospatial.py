@@ -35,6 +35,10 @@ def EE_image_corner_coords_to_polygon_gdf(df,
         lats.append(row[lat_keys].values[0])
         coords = list(zip(lons,lats))
         polygon = Polygon(coords)
+        
+        if lons[0] == lons[1]: #handles EarthExplorer instances where corner coordinates are identical
+            polygon= gpd.GeoDataFrame(geometry=[polygon,],
+                                      crs='epsg:'+'4326').to_crs('epsg:'+ epsg_code)['geometry'].buffer(0.018).to_crs('epsg:'+'4326').iloc[0]
 
         polygons.append(polygon)
         
