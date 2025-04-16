@@ -6,7 +6,12 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 import hvplot.xarray
+import matplotlib
+import rasterio
 
+import warnings
+warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning)
+warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
 
 
 def point_picker(image_file_name: str, point_count = 1) -> pd.DataFrame:
