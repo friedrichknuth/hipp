@@ -76,11 +76,11 @@ def image_restitution(df_detected,
                                     df_detected['principal_point_y'].iloc[index]))
 
         # add prinicpal point to get true fiducial coordinates into image reference system
-        if fiducial_coordinates_true_mm:
+        if fiducial_coordinates_true_mm is not None:
             fiducial_coordinates_true = fiducial_coordinates_true_px + principal_point
 
 
-        if qc and fiducial_coordinates_true_mm:
+        if qc and fiducial_coordinates_true_mm is not None:
             # convert coordinates to camera reference system.
             fiducial_coordinates_mm, principal_point_mm = hipp.qc.convert_coordinates(fiducial_coordinates,
                                                                                       principal_point,
@@ -269,6 +269,8 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
     
     for image_file in images:
         image_array = cv2.imread(image_file,cv2.IMREAD_GRAYSCALE)
+        if image_array is None:
+            print(image_file)
         
         # Subset image array into window slices to speed up template matching
         if midside_fiducials:
