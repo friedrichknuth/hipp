@@ -1,1 +1,0 @@
-from .qc import *
