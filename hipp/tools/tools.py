@@ -1,88 +1,100 @@
-import cv2
+import tifffile
 import holoviews as hv
-import hvplot
-import hvplot.xarray
-import matplotlib
-import numpy as np
-import os
+import time
 import panel as pn
-import pathlib
-import rasterio
-import shutil
+import pandas as pd
+import numpy as np
 import xarray as xr
-import rioxarray
-hv.extension('bokeh')
-
-import hipp.image
-import hipp.tools
-
-import warnings
-warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning)
-warnings.filterwarnings("ignore", category=rasterio.errors.NotGeoreferencedWarning)
+import hvplot.xarray
 
 
 
-"""
-Library for interactive python tools.
-"""
+def point_picker(image_file_name: str, point_count = 1) -> pd.DataFrame:
+    """
+    Displays an interactive image viewer and allows the user to pick a number of points.
 
-def point_picker(image_file_name,
-                 point_count = 1):
-    
-    hv_image, subplot_width, subplot_height = hipp.tools.hv_plot_raster(image_file_name)
+    Args:
+        image_file_name (str): Path to the image file.
+        point_count (int): Number of points the user is required to pick.
 
+    Returns:
+        list[tuple[int, int]]: List of (x, y) coordinates of selected points as integers.
+    """
+    # Generate image plot and get display dimensions
+    hv_image, subplot_width, subplot_height = hv_plot_raster(image_file_name)
+
+    # Initialize empty point layer and point drawing stream
     points = hv.Points([])
     point_stream = hv.streams.PointDraw(source=points)
 
-    app = (hv_image * points).opts(hv.opts.Points(width=subplot_width,
-                                                  height=subplot_height,
-                                                  size=5,
-                                                  color='blue',
-                                                  tools=["hover"]))
-
+    # Combine image and point layer into an interactive app
+    app = (hv_image * points).opts(hv.opts.Points(
+        width=subplot_width,
+        height=subplot_height,
+        size=5,
+        color='blue',
+        tools=["hover"]
+    ))
+    # Launch the interactive panel in a separate thread
     panel = pn.panel(app)
-
     server = panel.show(threaded=True)
 
-    condition = True
-    while condition == True: 
-        try:
-            if len(point_stream.data['x']) == point_count:
-                server.stop()
-                condition = False
-        except:
-            pass
+    # Wait until the user has selected the desired number of points
+    while True:
+        if point_stream.data and len(point_stream.data.get('x', [])) == point_count:
+            server.stop()
+            break
+        time.sleep(0.1)
 
-    df = point_stream.element.dframe()
-    
-    return df
+    return point_stream.element.dframe()
 
 
-def hv_plot_raster(image_file_name):
-    
-    src = rasterio.open(image_file_name)
+def hv_plot_raster(image_file_name: str) -> tuple[hv.Overlay, int, int]:
+    """
+    Loads a TIFF image, converts it to grayscale, and prepares an hvPlot raster for visualization.
 
-    subplot_width  = hipp.tools.scale_down_number(src.shape[0])
-    subplot_height = hipp.tools.scale_down_number(src.shape[1])
+    Args:
+        image_file_name (str): Path to the TIFF image file.
 
-    da = rioxarray.open_rasterio(src)
-    
-    da.values = hipp.image.img_linear_stretch(da.values)
+    Returns:
+        tuple: (hvPlot object of the image, plot width, plot height)
+    """
+    # Read the TIFF image
+    image = tifffile.imread(image_file_name)
 
-    hv_image = da.sel(band=1).hvplot.image(rasterize=True,
-                                      width=subplot_width,
-                                      height=subplot_height,
-                                      flip_yaxis=True,
-                                      colorbar=False,
-                                      cmap='gray')
-                                      
-    return hv_image, subplot_width, subplot_height
-    
-    
-def scale_down_number(number, threshold=1000):
-    while number > threshold:
-        number = number / 2
-    number = int(number)
-    return number
-    
-    
+    # Convert image to grayscale if it's multi-channel (e.g. RGB)
+    if len(image.shape) == 3:
+        image_gray = np.mean(image, axis=-1).astype(np.uint8)
+    else:
+        image_gray = image 
+
+    # Convert to xarray DataArray with dimensions named "y" and "x"
+    da = xr.DataArray(image_gray, dims=["y", "x"])
+
+    # Adjust plot size to maintain correct aspect ratio
+    plot_height, plot_width  = scale_down_shape(image_gray.shape)
+
+    # Create an interactive raster image plot using hvPlot
+    hv_plot = da.hvplot.image(cmap="gray", rasterize=True).opts(
+        invert_yaxis=True,
+        width=plot_width,
+        height=plot_height,
+        colorbar=False
+    )
+    return hv_plot , plot_width, plot_height
+
+
+def scale_down_shape(shape: tuple[int, int], new_width: int = 800) -> tuple[int, int]:
+    """
+    Scales down the original image shape proportionally to a new width.
+
+    Args:
+        shape (tuple[int, int]): Original shape of the image (height, width).
+        new_width (int): Desired width to scale down to (default is 800).
+
+    Returns:
+        tuple[int, int]: New shape (width, height) preserving aspect ratio.
+    """
+    # Calculate new height to preserve aspect ratio
+    height = int(shape[1] / (shape[0]/new_width))
+    return (new_width, height)
