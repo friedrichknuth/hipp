@@ -409,6 +409,24 @@ def define_corner_windows(image_array):
     
     return corner_windows
 
+def define_center_window(image_array):
+    
+    # define window as slices: [y1:y2, x1:x2], so window = [y1, y2, x1, x2]
+    
+    half_image_height     = int(image_array.shape[0] / 2)
+    quarter_image_height  = int(half_image_height / 2)
+
+    half_image_width     = int(image_array.shape[1] / 2)
+    quarter_image_width  = int(half_image_width / 2)
+    
+    center_window = [[int(np.round(half_image_height - quarter_image_height/2)),
+                     int(np.round(half_image_height + quarter_image_height/2)),
+                     int(np.round(half_image_width - quarter_image_width/2)),
+                     int(np.round(half_image_width + quarter_image_width/2))]]
+              
+    
+    return center_window
+
 def detect_fiducials(slices,
                      template_array,
                      windows):

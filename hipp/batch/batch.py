@@ -250,7 +250,8 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
                           template_file = None,
                           template_high_res_zoomed_file = None,
                           midside_fiducials=False,
-                          corner_fiducials=False,
+                          corner_fiducials= False,
+                          center_fiducial = False,
                           qc=True):
     
     """
@@ -273,9 +274,13 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
         # Subset image array into window slices to speed up template matching
         if midside_fiducials:
             windows = hipp.core.define_midside_windows(image_array)
-        elif corner_fiducials:
             
+        elif corner_fiducials:
             windows = hipp.core.define_corner_windows(image_array)
+            
+        elif center_fiducial:
+            windows = hipp.core.define_center_window(image_array)
+            
         else:
             print("Please specify midside or corner fiducials and provide corresponding templates.")
             break
@@ -289,8 +294,14 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
         
         if midside_fiducials:
             labels = ['midside_left','midside_top','midside_right','midside_bottom']
+            
         elif corner_fiducials:
             labels = ['corner_top_left','corner_top_right','corner_bottom_right','corner_bottom_left']
+        
+        elif center_fiducial:
+            labels = ['principal_point']
+            
+            
         quality_score_labels = [sub + '_score' for sub in labels]
 
         subpixel_fiducial_locations, subpixel_quality_scores = hipp.core.detect_subpixel_fiducial_coordinates(image_file,
@@ -308,13 +319,22 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
     images_df = pd.DataFrame(images,columns=[image_file_name_column_name])
     fiducial_locations_df = pd.DataFrame(fiducial_locations,columns=labels)
     quality_scores_df = pd.DataFrame(quality_scores, columns=quality_score_labels)
-    principal_points_df = hipp.core.compute_principal_points(fiducial_locations_df, 
-                                                             quality_scores_df)
-    df  = pd.concat([images_df,
-                     fiducial_locations_df,
-                     quality_scores_df,
-                     principal_points_df],
-                     axis=1)
+    
+    if not center_fiducial:
+        principal_points_df = hipp.core.compute_principal_points(fiducial_locations_df, 
+                                                                 quality_scores_df)
+        df  = pd.concat([images_df,
+                         fiducial_locations_df,
+                         quality_scores_df,
+                         principal_points_df],
+                         axis=1)
+        
+    if center_fiducial:
+        df  = pd.concat([images_df,
+                         fiducial_locations_df,
+                         quality_scores_df],
+                         axis=1)
+        
     return df
     
 def preprocess_with_fiducial_proxies(image_directory,
