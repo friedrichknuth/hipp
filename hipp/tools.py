@@ -8,6 +8,9 @@ import xarray as xr
 import hvplot.xarray
 import matplotlib
 import rasterio
+import cv2
+
+from hipp.image import img_linear_stretch
 
 import warnings
 warnings.filterwarnings("ignore", category=matplotlib.MatplotlibDeprecationWarning)
@@ -56,7 +59,7 @@ def point_picker(image_file_name: str, point_count = 1) -> pd.DataFrame:
 
 def hv_plot_raster(image_file_name: str) -> tuple[hv.Overlay, int, int]:
     """
-    Loads a TIFF image, converts it to grayscale, and prepares an hvPlot raster for visualization.
+    Loads a TIFF image in grayscale, and prepares an hvPlot raster for visualization.
 
     Args:
         image_file_name (str): Path to the TIFF image file.
@@ -64,14 +67,9 @@ def hv_plot_raster(image_file_name: str) -> tuple[hv.Overlay, int, int]:
     Returns:
         tuple: (hvPlot object of the image, plot width, plot height)
     """
-    # Read the TIFF image
-    image = tifffile.imread(image_file_name)
-
-    # Convert image to grayscale if it's multi-channel (e.g. RGB)
-    if len(image.shape) == 3:
-        image_gray = np.mean(image, axis=-1).astype(np.uint8)
-    else:
-        image_gray = image 
+    # opne TIFF img in grayscale and apply linear stretch
+    image_gray = cv2.imread(image_file_name, cv2.IMREAD_GRAYSCALE)
+    image_gray = img_linear_stretch(image_gray)
 
     # Convert to xarray DataArray with dimensions named "y" and "x"
     da = xr.DataArray(image_gray, dims=["y", "x"])

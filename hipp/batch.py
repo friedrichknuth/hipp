@@ -269,8 +269,6 @@ def iter_detect_fiducials(image_files_directory = 'input_data/raw_images/',
     
     for image_file in images:
         image_array = cv2.imread(image_file,cv2.IMREAD_GRAYSCALE)
-        if image_array is None:
-            print(image_file)
         
         # Subset image array into window slices to speed up template matching
         if midside_fiducials:

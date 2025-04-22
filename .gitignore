@@ -132,12 +132,9 @@ dmypy.json
 **.DS_Store
 
 # ignore the creating folders and file for the examples notebook
-examples/image_restitution/input_data/raw_images
-examples/image_restitution/input_data/fiducials
-examples/image_restitution/input_data/preprocessed_images
-examples/image_restitution/qc
-examples/fiducial_proxy_detection/calibration_reports
-examples/fiducial_proxy_detection/raw_images
-examples/fiducial_proxy_detection/fiducials
-examples/fiducial_proxy_detection/input_data/cropped_images
-examples/fiducial_proxy_detection/qc
+**/raw_images/
+**/fiducials/
+**/preprocessed_images/
+**/cropped_images/
+**/qc/
+!/examples/fiducial_proxy_detection/input_data/fiducials
