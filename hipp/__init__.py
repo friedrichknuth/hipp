@@ -1,11 +1,11 @@
-from . import batch
-from . import core
-from . import dataquery
-from . import geospatial
-from . import image
-from . import io
-from . import math
-from . import plot
-from . import qc
-from . import tools
-from . import utils
+import hipp.batch
+import hipp.core
+import hipp.dataquery
+import hipp.geospatial
+import hipp.image
+import hipp.io
+import hipp.math
+import hipp.plot
+import hipp.qc
+import hipp.tools
+import hipp.utils
